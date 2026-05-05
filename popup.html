@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+
+<!-- ======== Scene 1: 登录 ======== -->
+<div id="scene1" class="scene active">
+  <div class="header">
+    <div class="header-left">
+      <h1>Suno Cover Tool</h1>
+    </div>
+  </div>
+  <div style="padding:16px;">
+    <div class="form-group">
+      <label class="form-label">API Key</label>
+      <input id="loginApiKey" class="form-input" type="password" placeholder="sk-xxxxxxxxxxxxxxxx" />
+    </div>
+    <button id="loginBtn" class="btn btn-primary btn-block mt-8">登录</button>
+    <div id="loginError" class="status-card err mt-8" style="display:none;">
+      <span class="status-dot"></span>
+      <span id="loginErrorMsg"></span>
+    </div>
+    <div class="text-sm text-muted mt-12" style="text-align:center;">
+      登录后可一键获取 Suno Cookie
+    </div>
+  </div>
+</div>
+
+<!-- ======== Scene 2: Dashboard ======== -->
+<div id="scene2" class="scene">
+  <div class="header">
+    <div class="header-left">
+      <h1>Suno Cover Tool</h1>
+      <span class="subtitle" id="userName"></span>
+    </div>
+    <div class="header-right">
+      <button class="icon-btn" id="refreshBtn" title="刷新">&#x21BB;</button>
+      <button class="icon-btn" id="logoutBtn" title="退出登录">&#x23FB;</button>
+    </div>
+  </div>
+  <div style="padding:16px;">
+    <!-- Cookie 状态 + 一键获取 -->
+    <div id="cookieStatus" class="status-card warn">
+      <span class="status-dot"></span>
+      <span id="cookieStatusText">Cookie 未绑定</span>
+      <button class="btn btn-primary btn-sm" id="captureCookieBtn" style="margin-left:auto;">获取 Cookie</button>
+    </div>
+
+    <!-- 额度 -->
+    <div class="quota-bar-wrap">
+      <div class="quota-text">
+        <span>额度</span>
+        <span id="quotaText">0 / 0</span>
+      </div>
+      <div class="quota-bar-bg">
+        <div class="quota-bar-fill" id="quotaBar" style="width:0%"></div>
+      </div>
+      <div class="quota-text mt-8">
+        <span class="text-muted">Suno 积分: <span id="sunoCredits">--</span></span>
+        <span class="text-muted" id="quotaRemaining"></span>
+      </div>
+    </div>
+
+    <!-- 上传 -->
+    <div class="section">
+      <div class="section-title">上传音频</div>
+      <div class="upload-area" id="uploadArea">
+        <div class="upload-icon">&#x1F3B5;</div>
+        <div class="upload-text">点击选择或拖拽音频文件</div>
+        <input type="file" id="fileInput" accept="audio/*" style="display:none;" />
+      </div>
+      <div id="uploadProgress" style="display:none;" class="status-card warn">
+        <span class="spinner"></span>
+        <span id="uploadProgressText">正在上传中，请耐心等待...</span>
+      </div>
+      <!-- Suno 分享链接 -->
+      <div class="flex gap-4 mt-8">
+        <input id="sunoShareLink" class="form-input" type="text" placeholder="或粘贴 Suno 分享链接: https://suno.com/song/..." style="flex:1;" />
+        <button class="btn btn-primary btn-sm" id="parseLinkBtn">解析</button>
+      </div>
+    </div>
+
+    <!-- 已上传音频 -->
+    <div class="section">
+      <div class="section-title">
+        <span>已上传音频</span>
+        <button class="btn btn-ghost btn-sm" id="clearHistoryBtn">清空</button>
+      </div>
+      <div id="uploadHistory" class="scroll-area"></div>
+    </div>
+
+    <!-- 预设 -->
+    <div class="section">
+      <div class="section-title">
+        <span>风格预设</span>
+        <div class="flex gap-4">
+          <button class="btn btn-ghost btn-sm" id="importPresetBtn">导入</button>
+          <button class="btn btn-ghost btn-sm" id="exportAllPresetsBtn">导出全部</button>
+          <button class="btn btn-primary btn-sm" id="addPresetBtn">+ 新建</button>
+        </div>
+      </div>
+      <div id="presetList" class="scroll-area"></div>
+      <input type="file" id="importPresetInput" accept=".json" style="display:none;" />
+    </div>
+
+    <!-- 任务队列 -->
+    <div class="section">
+      <div class="section-title">
+        <span>任务队列</span>
+        <div class="flex gap-4">
+          <span class="text-sm text-muted" id="autoRefreshLabel">每 60 秒自动刷新</span>
+          <button class="btn btn-ghost btn-sm" id="clearTasksBtn">清空</button>
+        </div>
+      </div>
+      <div id="taskList" class="scroll-area"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ======== Scene 3: Cover 配置 ======== -->
+<div id="scene3" class="scene">
+  <div class="header">
+    <div class="header-left">
+      <button class="back-btn" id="backToScene2">&larr;</button>
+      <h1>配置翻唱</h1>
+    </div>
+  </div>
+  <div style="padding:16px;">
+    <!-- 音频信息 -->
+    <div class="status-card ok mb-8">
+      <span class="status-dot"></span>
+      <span id="audioInfo">audio.mp3 | clip_id: ---</span>
+    </div>
+
+    <!-- 歌词 -->
+    <div class="form-group">
+      <label class="form-label">歌词（可选，留空自动提取）</label>
+      <textarea id="lyricsInput" class="form-input" rows="4" placeholder="(Verse 1)&#10;歌词内容..."></textarea>
+    </div>
+
+    <!-- 风格卡片 -->
+    <div class="section">
+      <div class="section-title">
+        <span>风格 (<span id="styleCount">1</span>/5)</span>
+        <button class="btn btn-primary btn-sm" id="addStyleBtn">+ 添加风格</button>
+      </div>
+      <div id="styleCards"></div>
+    </div>
+
+    <!-- 提交 -->
+    <button id="submitCoverBtn" class="btn btn-success btn-block mt-8">提交翻唱任务</button>
+  </div>
+</div>
+
+<!-- ======== 预设编辑弹窗 ======== -->
+<div id="presetModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:100; padding:40px 20px;">
+  <div style="background:#1a1a2e; border-radius:10px; padding:16px; max-width:380px; margin:0 auto;">
+    <div class="flex-between mb-8">
+      <strong style="font-size:14px;" id="presetModalTitle">新建预设</strong>
+      <button class="remove-style" id="closePresetModal">&times;</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">预设名称</label>
+      <input id="presetEditName" class="form-input" placeholder="例: 复古华语男声" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">风格标签</label>
+      <input id="presetEditTags" class="form-input" placeholder="Retro Mandopop, smooth portamento vocals" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">排除风格</label>
+      <input id="presetEditNegTags" class="form-input" placeholder="rap, electronic" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">人声性别</label>
+      <select id="presetEditGender" class="form-select">
+        <option value="">自动</option>
+        <option value="male">男声</option>
+        <option value="female">女声</option>
+      </select>
+    </div>
+    <div class="slider-group">
+      <div class="slider-label"><span>Weirdness</span><span id="presetWeirdVal">50%</span></div>
+      <input id="presetEditWeird" class="slider-input" type="range" min="0" max="100" value="50" />
+    </div>
+    <div class="slider-group">
+      <div class="slider-label"><span>Style Influence</span><span id="presetStyleVal">50%</span></div>
+      <input id="presetEditStyle" class="slider-input" type="range" min="0" max="100" value="50" />
+    </div>
+    <div class="slider-group">
+      <div class="slider-label"><span>Audio Influence</span><span id="presetAudioVal">25%</span></div>
+      <input id="presetEditAudio" class="slider-input" type="range" min="0" max="100" value="25" />
+    </div>
+    <button id="savePresetBtn" class="btn btn-success btn-block mt-8">保存</button>
+  </div>
+</div>
+
+<!-- ======== 下载面板弹窗 ======== -->
+<div id="downloadModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:100; padding:40px 20px;">
+  <div style="background:#1a1a2e; border-radius:10px; padding:16px; max-width:420px; margin:0 auto;">
+    <div class="flex-between mb-8">
+      <strong style="font-size:14px;">下载</strong>
+      <button class="remove-style" id="closeDownloadModal">&times;</button>
+    </div>
+    <!-- 歌曲信息 -->
+    <div class="status-card ok mb-8">
+      <span class="status-dot"></span>
+      <span id="dlSongTitle">加载中...</span>
+    </div>
+    <!-- 下载选项 -->
+    <div class="form-group">
+      <label class="form-label">选择下载内容</label>
+      <div class="checkbox-group">
+        <input type="checkbox" id="dlOptMp3" checked />
+        <label for="dlOptMp3">MP3 音频</label>
+      </div>
+      <div class="checkbox-group">
+        <input type="checkbox" id="dlOptWav" />
+        <label for="dlOptWav">WAV 音频（消耗 1 额度）</label>
+      </div>
+      <div class="checkbox-group">
+        <input type="checkbox" id="dlOptLyrics" checked />
+        <label for="dlOptLyrics">歌词 (TXT)</label>
+      </div>
+      <div class="checkbox-group">
+        <input type="checkbox" id="dlOptStyle" />
+        <label for="dlOptStyle">音乐风格 + 高级参数 (TXT)</label>
+      </div>
+    </div>
+    <button id="dlConfirmBtn" class="btn btn-success btn-block mt-8">下载选中项</button>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="presets.js"></script>
+<script src="popup.js"></script>
+</body>
+</html>
