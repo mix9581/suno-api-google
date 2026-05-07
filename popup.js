@@ -18,7 +18,36 @@ let state = {
   // Scene 3 data
   uploadedClipId: null,
   uploadedFileName: null,
+  // Pagination
+  uploadHistoryPage: 0,
+  sunoLibraryPage: 0,
+  taskListPage: 0,
+  // Selection
+  libSelectedIds: new Set(),
+  historySelectedIds: new Set(),
+  taskClipSelectedIds: new Set(),
 };
+
+// ======== Delete Confirmation Helper ========
+function withConfirm(btn, originalLabel, action) {
+  if (btn.dataset.confirming === '1') {
+    btn.dataset.confirming = '0';
+    btn.textContent = originalLabel;
+    btn.style.cssText = '';
+    action();
+  } else {
+    btn.dataset.confirming = '1';
+    btn.textContent = '确认？';
+    btn.style.cssText = 'background:#ef4444!important;color:#fff!important;border-color:#ef4444!important;';
+    setTimeout(() => {
+      if (btn.dataset.confirming === '1') {
+        btn.dataset.confirming = '0';
+        btn.textContent = originalLabel;
+        btn.style.cssText = '';
+      }
+    }, 3000);
+  }
+}
 
 // ======== Scene Navigation ========
 function showScene(sceneId) {
@@ -45,6 +74,13 @@ async function api(method, path, body = null) {
     'X-API-Key': state.apiKey,
     'ngrok-skip-browser-warning': '1',
   };
+
+  // 每次请求携带本地 Suno Cookie
+  const storageData = await chrome.storage.local.get(['sunoCookie']);
+  if (storageData.sunoCookie) {
+    headers['X-Suno-Cookie'] = storageData.sunoCookie;
+  }
+
   const opts = { method, headers };
   if (body) {
     headers['Content-Type'] = 'application/json';
@@ -101,6 +137,9 @@ async function doLogin() {
   try {
     const data = await api('GET', '/api/auth/status');
 
+    // Clear old cookie from storage to force fresh capture
+    await chrome.storage.local.remove(['sunoCookie', 'lastCookieFingerprint', 'capturedAt', 'cookiePushStatus', 'cookiePushTime']);
+
     // Save credentials + apiUrl (background.js needs apiUrl for auto-push)
     await chrome.storage.local.set({ apiKey: keyVal, apiUrl: API_URL });
 
@@ -108,16 +147,19 @@ async function doLogin() {
     state.userName = data.name;
     state.quota = data.quota;
     state.used = data.used;
-    state.cookieValid = data.cookie_valid;
-    state.sunoCredits = data.suno_credits;
-
-    // Auto-capture and push cookie
-    await tryCaptureAndPushCookie();
+    state.cookieValid = false; // Force cookie capture
+    state.sunoCredits = null;
 
     // Transition to Scene 2
     renderDashboard();
     showScene('scene2');
     startAutoRefresh();
+
+    // Auto-trigger cookie capture after login
+    setTimeout(() => {
+      const btn = $('captureCookieBtn');
+      if (btn) btn.click();
+    }, 500);
   } catch (err) {
     showLoginError(err.message);
   } finally {
@@ -127,16 +169,229 @@ async function doLogin() {
 }
 
 loginBtn.addEventListener('click', doLogin);
+loginApiKey.addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
 
-// Enter key support
-loginApiKey.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') doLogin();
+// ======== Login Tabs ========
+$('tabApiKey').addEventListener('click', () => {
+  $('tabApiKey').classList.add('active');
+  $('tabEmail').classList.remove('active');
+  $('formApiKey').style.display = 'block';
+  $('formEmail').style.display = 'none';
+});
+$('tabEmail').addEventListener('click', () => {
+  $('tabEmail').classList.add('active');
+  $('tabApiKey').classList.remove('active');
+  $('formEmail').style.display = 'block';
+  $('formApiKey').style.display = 'none';
+});
+$('switchToEmail').addEventListener('click', (e) => {
+  e.preventDefault();
+  $('tabEmail').click();
+});
+
+// ======== Email Login ========
+$('showRegister').addEventListener('click', (e) => {
+  e.preventDefault();
+  $('emailLoginPanel').style.display = 'none';
+  $('emailRegisterPanel').style.display = 'block';
+});
+$('showLogin').addEventListener('click', (e) => {
+  e.preventDefault();
+  $('emailRegisterPanel').style.display = 'none';
+  $('emailLoginPanel').style.display = 'block';
+});
+
+async function doEmailLogin() {
+  const email = $('emailInput').value.trim();
+  const password = $('emailPasswordInput').value;
+  const errEl = $('emailLoginError');
+  const errMsg = $('emailLoginErrorMsg');
+  errEl.style.display = 'none';
+
+  if (!email || !password) { errMsg.textContent = '请填写邮箱和密码'; errEl.style.display = 'flex'; return; }
+
+  const btn = $('emailLoginBtn');
+  btn.disabled = true; btn.textContent = '登录中...';
+
+  try {
+    const resp = await fetch(`${API_URL}/api/auth/email_login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) { errMsg.textContent = data.error || '登录失败'; errEl.style.display = 'flex'; return; }
+
+    // Clear old cookie from storage to force fresh capture
+    await chrome.storage.local.remove(['sunoCookie', 'lastCookieFingerprint', 'capturedAt', 'cookiePushStatus', 'cookiePushTime']);
+
+    state.apiKey = data.api_key;
+    state.userName = data.name;
+    state.quota = data.quota;
+    state.used = data.used;
+    state.cookieValid = false; // Force cookie capture
+    state.sunoCredits = null;
+
+    await chrome.storage.local.set({ apiKey: data.api_key, apiUrl: API_URL });
+
+    renderDashboard();
+    showScene('scene2');
+    startAutoRefresh();
+
+    // Auto-trigger cookie capture after login
+    setTimeout(() => {
+      const btn = $('captureCookieBtn');
+      if (btn) btn.click();
+    }, 500);
+  } catch (e) {
+    errMsg.textContent = '网络错误，请检查连接'; errEl.style.display = 'flex';
+  } finally {
+    btn.disabled = false; btn.textContent = '登录';
+  }
+}
+
+$('emailLoginBtn').addEventListener('click', doEmailLogin);
+$('emailPasswordInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') doEmailLogin(); });
+
+// ======== Email Register ========
+async function doRegister() {
+  const name = $('regName').value.trim();
+  const email = $('regEmail').value.trim();
+  const password = $('regPassword').value;
+  const confirm = $('regConfirm').value;
+  const errEl = $('registerError');
+  const errMsg = $('registerErrorMsg');
+  const okEl = $('registerSuccess');
+  const okMsg = $('registerSuccessMsg');
+  errEl.style.display = 'none';
+  okEl.style.display = 'none';
+
+  if (!email || !password) { errMsg.textContent = '请填写邮箱和密码'; errEl.style.display = 'flex'; return; }
+  if (password !== confirm) { errMsg.textContent = '两次密码不一致'; errEl.style.display = 'flex'; return; }
+  if (password.length < 6) { errMsg.textContent = '密码至少 6 位'; errEl.style.display = 'flex'; return; }
+
+  const btn = $('registerBtn');
+  btn.disabled = true; btn.textContent = '注册中...';
+
+  try {
+    const resp = await fetch(`${API_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, name }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) { errMsg.textContent = data.error || '注册失败'; errEl.style.display = 'flex'; return; }
+
+    okMsg.textContent = '注册成功！初始额度为 0，联系管理员开通后即可使用翻唱功能';
+    okEl.style.display = 'flex';
+    setTimeout(() => {
+      $('emailRegisterPanel').style.display = 'none';
+      $('emailLoginPanel').style.display = 'block';
+      $('emailInput').value = email;
+    }, 2500);
+  } catch (e) {
+    errMsg.textContent = '网络错误，请检查连接'; errEl.style.display = 'flex';
+  } finally {
+    btn.disabled = false; btn.textContent = '注册账号';
+  }
+}
+
+$('registerBtn').addEventListener('click', doRegister);
+
+// ======== Forgot Password ========
+function showForgotPanel() {
+  $('emailLoginPanel').style.display = 'none';
+  $('emailRegisterPanel').style.display = 'none';
+  $('emailForgotPanel').style.display = 'block';
+  $('forgotStep1').style.display = 'block';
+  $('forgotStep2').style.display = 'none';
+  $('sendCodeMsg').style.display = 'none';
+  $('sendCodeErr').style.display = 'none';
+  $('resetErr').style.display = 'none';
+  $('resetOk').style.display = 'none';
+}
+
+$('showForgot').addEventListener('click', (e) => { e.preventDefault(); showForgotPanel(); });
+$('backToLogin').addEventListener('click', (e) => {
+  e.preventDefault();
+  $('emailForgotPanel').style.display = 'none';
+  $('emailLoginPanel').style.display = 'block';
+});
+
+$('sendCodeBtn').addEventListener('click', async () => {
+  const email = $('forgotEmail').value.trim();
+  $('sendCodeMsg').style.display = 'none';
+  $('sendCodeErr').style.display = 'none';
+  if (!email) { $('sendCodeErrText').textContent = '请输入邮箱'; $('sendCodeErr').style.display = 'flex'; return; }
+
+  const btn = $('sendCodeBtn');
+  btn.disabled = true; btn.textContent = '发送中...';
+
+  try {
+    const resp = await fetch(`${API_URL}/api/auth/send_reset_code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) { $('sendCodeErrText').textContent = data.error || '发送失败'; $('sendCodeErr').style.display = 'flex'; return; }
+    $('sendCodeMsgText').textContent = data.message || '验证码已发送，10 分钟内有效';
+    $('sendCodeMsg').style.display = 'flex';
+    $('forgotStep2').style.display = 'block';
+
+    // 60 秒倒计时
+    let seconds = 60;
+    const timer = setInterval(() => {
+      btn.textContent = `重新发送 (${--seconds}s)`;
+      if (seconds <= 0) { clearInterval(timer); btn.textContent = '重新发送'; btn.disabled = false; }
+    }, 1000);
+  } catch {
+    $('sendCodeErrText').textContent = '网络错误'; $('sendCodeErr').style.display = 'flex';
+    btn.disabled = false; btn.textContent = '发送验证码';
+  }
+});
+
+$('resetPasswordBtn').addEventListener('click', async () => {
+  const email = $('forgotEmail').value.trim();
+  const code = $('resetCode').value.trim();
+  const newPassword = $('newPassword').value;
+  $('resetErr').style.display = 'none';
+  $('resetOk').style.display = 'none';
+
+  if (!code || !newPassword) { $('resetErrText').textContent = '请填写验证码和新密码'; $('resetErr').style.display = 'flex'; return; }
+  if (newPassword.length < 6) { $('resetErrText').textContent = '密码至少 6 位'; $('resetErr').style.display = 'flex'; return; }
+
+  const btn = $('resetPasswordBtn');
+  btn.disabled = true; btn.textContent = '重置中...';
+
+  try {
+    const resp = await fetch(`${API_URL}/api/auth/reset_password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code, new_password: newPassword }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) { $('resetErrText').textContent = data.error || '重置失败'; $('resetErr').style.display = 'flex'; btn.disabled = false; btn.textContent = '确认重置'; return; }
+
+    $('resetOk').style.display = 'flex';
+    setTimeout(() => {
+      $('emailForgotPanel').style.display = 'none';
+      $('emailLoginPanel').style.display = 'block';
+      $('emailInput').value = email;
+      $('emailPasswordInput').value = '';
+    }, 2000);
+  } catch {
+    $('resetErrText').textContent = '网络错误'; $('resetErr').style.display = 'flex';
+  } finally {
+    btn.disabled = false; btn.textContent = '确认重置';
+  }
 });
 
 // ======== One-click Cookie Capture ========
-$('captureCookieBtn').addEventListener('click', () => {
-  $('captureCookieBtn').textContent = '等待捕获...';
-  $('captureCookieBtn').disabled = true;
+$('captureCookieBtn').addEventListener('click', async () => {
+  const btn = $('captureCookieBtn');
+  btn.textContent = '等待捕获...';
+  btn.disabled = true;
 
   // 如果当前标签页是 suno.com，直接刷新；否则开新标签
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -147,31 +402,41 @@ $('captureCookieBtn').addEventListener('click', () => {
       chrome.tabs.create({ url: 'https://suno.com' });
     }
   });
-});
 
-// ======== Cookie Capture ========
-async function tryCaptureAndPushCookie() {
-  try {
-    // Read captured cookie from storage (set by background.js)
+  // Wait for background.js to capture cookie (poll storage every 500ms for 15s)
+  let attempts = 0;
+  const maxAttempts = 30;
+  const pollInterval = setInterval(async () => {
+    attempts++;
     const data = await chrome.storage.local.get(['sunoCookie']);
-    if (!data.sunoCookie || !data.sunoCookie.includes('__client=')) {
-      showToast('未检测到有效 Cookie，请先在 suno.com 登录', 'err');
-      return;
+
+    if (data.sunoCookie && data.sunoCookie.includes('__client=')) {
+      clearInterval(pollInterval);
+      // Cookie 已存入本地，通过 status 接口验证（api() 会自动带上 X-Suno-Cookie 头）
+      try {
+        const statusData = await api('GET', '/api/auth/status');
+        state.cookieValid = statusData.cookie_valid;
+        state.sunoCredits = statusData.suno_credits;
+        renderDashboard();
+        if (statusData.cookie_valid) {
+          showToast('Cookie 获取成功，Suno 账号已就绪');
+        } else {
+          showToast('Cookie 已捕获，但 Suno 账号验证失败，请确认已登录 suno.com', 'err');
+        }
+      } catch (e) {
+        showToast('Cookie 验证失败: ' + e.message, 'err');
+      } finally {
+        btn.textContent = '刷新 Cookie';
+        btn.disabled = false;
+      }
+    } else if (attempts >= maxAttempts) {
+      clearInterval(pollInterval);
+      showToast('未检测到 Cookie，请确保已在 suno.com 登录', 'err');
+      btn.textContent = state.cookieValid ? '刷新 Cookie' : '获取 Cookie';
+      btn.disabled = false;
     }
-    const result = await api('POST', '/api/auth/bind_cookie', {
-      cookie: data.sunoCookie,
-    });
-    if (result.success) {
-      state.cookieValid = true;
-      state.sunoCredits = result.credits_left;
-      showToast('Cookie 绑定成功');
-    } else {
-      showToast('Cookie 绑定失败: ' + (result.error || '未知错误'), 'err');
-    }
-  } catch (e) {
-    showToast('Cookie 推送失败: ' + e.message, 'err');
-  }
-}
+  }, 500);
+});
 
 // ======== Scene 2: Dashboard ========
 function renderDashboard() {
@@ -199,7 +464,10 @@ function renderDashboard() {
   const pct = state.quota > 0 ? ((remaining / state.quota) * 100) : 0;
   $('quotaBar').style.width = `${pct}%`;
   $('sunoCredits').textContent = state.sunoCredits != null ? state.sunoCredits : '--';
-  $('quotaRemaining').textContent = `剩余 ${remaining} 次`;
+  $('quotaRemaining').textContent = remaining <= 0 ? '⚠ 额度已用完' : `剩余 ${remaining} 次`;
+  if ($('quotaRemaining')) {
+    $('quotaRemaining').style.color = remaining <= 0 ? '#ffcc00' : '#888';
+  }
 
   // Render upload history
   renderUploadHistory();
@@ -209,7 +477,19 @@ function renderDashboard() {
 
   // Render tasks
   loadTasks();
+
+  // Render Suno library
+  loadSunoLibrary();
 }
+
+// ======== Changelog Toggle ========
+$('changelogToggle').addEventListener('click', () => {
+  const body = $('changelogBody');
+  const arrow = $('changelogArrow');
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  arrow.textContent = open ? '▾' : '▴';
+});
 
 async function refreshStatus() {
   try {
@@ -228,6 +508,22 @@ async function refreshStatus() {
 
 // Refresh button
 $('refreshBtn').addEventListener('click', refreshStatus);
+
+// Recharge modal
+$('rechargeBtn').addEventListener('click', () => {
+  navigator.clipboard.writeText(state.apiKey).then(() => {
+    showToast('API Key 已复制！');
+  }).catch(() => {
+    showToast('复制失败，请手动复制', 'err');
+  });
+  $('rechargeModal').style.display = 'block';
+});
+$('closeRechargeModal').addEventListener('click', () => {
+  $('rechargeModal').style.display = 'none';
+});
+$('rechargeModal').addEventListener('click', (e) => {
+  if (e.target === $('rechargeModal')) $('rechargeModal').style.display = 'none';
+});
 
 // Logout button
 $('logoutBtn').addEventListener('click', async () => {
@@ -275,9 +571,12 @@ async function handleUpload(file) {
     formData.append('file', file);
 
     const url = `${state.apiUrl.replace(/\/+$/, '')}/api/upload_audio`;
+    const uploadStorage = await chrome.storage.local.get(['sunoCookie']);
+    const uploadHeaders = { 'X-API-Key': state.apiKey, 'ngrok-skip-browser-warning': '1' };
+    if (uploadStorage.sunoCookie) uploadHeaders['X-Suno-Cookie'] = uploadStorage.sunoCookie;
     const resp = await fetch(url, {
       method: 'POST',
-      headers: { 'X-API-Key': state.apiKey, 'ngrok-skip-browser-warning': '1' },
+      headers: uploadHeaders,
       body: formData,
     });
     const data = await resp.json();
@@ -327,46 +626,95 @@ async function saveUploadHistory(clipId, fileName) {
 
 async function renderUploadHistory() {
   const container = $('uploadHistory');
+  const pager = $('uploadHistoryPager');
   const data = await chrome.storage.local.get('uploadHistory');
   const history = data.uploadHistory || [];
+  const PAGE_SIZE = 5;
+  const totalPages = Math.ceil(history.length / PAGE_SIZE) || 1;
+
+  if (state.uploadHistoryPage >= totalPages) state.uploadHistoryPage = totalPages - 1;
+  if (state.uploadHistoryPage < 0) state.uploadHistoryPage = 0;
+
+  const start = state.uploadHistoryPage * PAGE_SIZE;
+  const pageItems = history.slice(start, start + PAGE_SIZE);
 
   if (history.length === 0) {
     container.innerHTML = '<div class="empty">暂无上传记录</div>';
+    pager.style.display = 'none';
     return;
   }
 
-  container.innerHTML = history.map((h) => {
+  // Track selected history clip IDs
+  if (!state.historySelectedIds) state.historySelectedIds = new Set();
+
+  container.innerHTML = pageItems.map((h) => {
     const time = new Date(h.uploaded_at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
     return `
       <div class="preset-item">
-        <div>
-          <div class="preset-name">${escapeHtml(h.file_name)}</div>
+        <input type="checkbox" class="hist-check" data-clip-id="${h.clip_id}" style="margin-right:6px;accent-color:#ff7a00;flex-shrink:0;" ${state.historySelectedIds.has(h.clip_id) ? 'checked' : ''} />
+        <div style="min-width:0;flex:1;">
+          <div class="preset-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(h.file_name)}</div>
           <div class="preset-tags">${h.clip_id.substring(0, 12)}... | ${time}</div>
         </div>
-        <div class="flex gap-4">
+        <div class="flex gap-4" style="flex-shrink:0;">
           <button class="btn btn-ghost btn-sm open-dl-modal" data-clip-id="${h.clip_id}">下载</button>
           <button class="btn btn-primary btn-sm" data-reuse-clip="${h.clip_id}" data-reuse-name="${escapeHtml(h.file_name)}">翻唱</button>
+          <button class="btn btn-danger btn-sm del-history-btn" data-clip-id="${h.clip_id}" style="padding:5px 8px;">×</button>
         </div>
       </div>
     `;
   }).join('');
 
+  // Pagination display
+  if (totalPages > 1) {
+    pager.style.display = 'flex';
+    $('historyPageInfo').textContent = `${state.uploadHistoryPage + 1} / ${totalPages}`;
+    $('historyPrevBtn').disabled = state.uploadHistoryPage === 0;
+    $('historyNextBtn').disabled = state.uploadHistoryPage >= totalPages - 1;
+  } else {
+    pager.style.display = 'none';
+  }
+
   container.querySelectorAll('[data-reuse-clip]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      enterScene3(btn.dataset.reuseClip, btn.dataset.reuseName);
-    });
+    btn.addEventListener('click', () => enterScene3(btn.dataset.reuseClip, btn.dataset.reuseName));
   });
   container.querySelectorAll('.open-dl-modal').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      openDownloadModal(btn.dataset.clipId);
+    btn.addEventListener('click', () => openDownloadModal(btn.dataset.clipId));
+  });
+  container.querySelectorAll('.del-history-btn').forEach((btn) => {
+    btn.addEventListener('click', () => withConfirm(btn, '×', async () => {
+      const d = await chrome.storage.local.get('uploadHistory');
+      const filtered = (d.uploadHistory || []).filter(h => h.clip_id !== btn.dataset.clipId);
+      await chrome.storage.local.set({ uploadHistory: filtered });
+      state.historySelectedIds.delete(btn.dataset.clipId);
+      renderUploadHistory();
+    }));
+  });
+  container.querySelectorAll('.hist-check').forEach((cb) => {
+    cb.addEventListener('change', () => {
+      if (cb.checked) state.historySelectedIds.add(cb.dataset.clipId);
+      else state.historySelectedIds.delete(cb.dataset.clipId);
+      $('historyBatchDlBtn').style.display = state.historySelectedIds.size > 0 ? 'block' : 'none';
     });
   });
 }
 
-$('clearHistoryBtn').addEventListener('click', async () => {
+$('clearHistoryBtn').addEventListener('click', (e) => withConfirm(e.currentTarget, '清空', async () => {
   await chrome.storage.local.set({ uploadHistory: [] });
+  state.historySelectedIds = new Set();
+  $('historyBatchDlBtn').style.display = 'none';
   renderUploadHistory();
   showToast('已清空');
+}));
+$('historyPrevBtn').addEventListener('click', () => { state.uploadHistoryPage--; renderUploadHistory(); });
+$('historyNextBtn').addEventListener('click', () => { state.uploadHistoryPage++; renderUploadHistory(); });
+
+$('historyBatchDlBtn').addEventListener('click', () => {
+  batchDlClipIds = [...state.historySelectedIds];
+  $('batchDlCount').textContent = batchDlClipIds.length;
+  $('batchOptMp3').checked = true; $('batchOptWav').checked = false;
+  $('batchOptLyrics').checked = true; $('batchOptStyle').checked = false;
+  $('batchDlModal').style.display = 'block';
 });
 
 // ======== Suno Share Link Parser ========
@@ -404,16 +752,33 @@ $('parseLinkBtn').addEventListener('click', async () => {
 });
 
 // ======== Scene 3: Cover Config (scaffold) ========
-function enterScene3(clipId, fileName) {
+async function enterScene3(clipId, fileName) {
   state.uploadedClipId = clipId;
   state.uploadedFileName = fileName;
   $('audioInfo').textContent = `${fileName} | clip_id: ${clipId}`;
   resetStyleCards();
+  $('lyricsInput').value = '';
   showScene('scene3');
+
+  // 自动获取原曲歌词
+  try {
+    const info = await api('GET', `/api/clip?id=${clipId}`);
+    const lyrics = info.metadata?.prompt || info.lyrics || info.lyric || '';
+    if (lyrics) {
+      $('lyricsInput').value = lyrics;
+      showToast('歌词已自动填入');
+    }
+  } catch {
+    // 歌词获取失败不影响使用
+  }
 }
 
 $('backToScene2').addEventListener('click', () => {
   showScene('scene2');
+});
+
+$('clearLyricsBtn').addEventListener('click', () => {
+  $('lyricsInput').value = '';
 });
 
 // Style cards
@@ -439,11 +804,14 @@ function renderStyleCards() {
         ${styleCards.length > 1 ? `<button class="remove-style" data-idx="${i}">&times;</button>` : ''}
       </div>
       <div class="form-group">
-        <label class="form-label">风格标签</label>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <label class="form-label" style="margin-bottom:0;color:#ff7a00;">风格标签</label>
+          <button type="button" class="clear-style-tags btn-ghost" data-idx="${i}" style="background:none;border:none;color:#555;font-size:10px;cursor:pointer;padding:0 2px;">清空</button>
+        </div>
         <input class="form-input style-tags" data-idx="${i}" type="text" placeholder="jazz, smooth, female vocals" value="${escapeHtml(card.tags)}" />
       </div>
       <div class="form-group">
-        <label class="form-label">使用预设</label>
+        <label class="form-label" style="color:#ff7a00;">使用预设</label>
         <select class="form-select preset-select" data-idx="${i}">
           <option value="">-- 不使用 --</option>
         </select>
@@ -529,6 +897,13 @@ function renderStyleCards() {
     btn.addEventListener('click', () => {
       btn.classList.toggle('open');
       container.querySelector(`[data-adv-body="${btn.dataset.advToggle}"]`).classList.toggle('open');
+    });
+  });
+  container.querySelectorAll('.clear-style-tags').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx);
+      styleCards[idx].tags = '';
+      renderStyleCards();
     });
   });
 }
@@ -618,7 +993,7 @@ async function renderPresets() {
     <div class="preset-item">
       <div>
         <div class="preset-name">${escapeHtml(p.name)}</div>
-        <div class="preset-tags">${escapeHtml(p.tags || '')}</div>
+        <div class="preset-tags" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;">${escapeHtml((p.tags || '').substring(0, 30))}${(p.tags||'').length > 30 ? '…' : ''}</div>
       </div>
       <div class="preset-actions">
         <button class="btn btn-ghost btn-sm" data-preset-edit="${p.id}">编辑</button>
@@ -639,11 +1014,11 @@ async function renderPresets() {
     });
   });
   list.querySelectorAll('[data-preset-del]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', () => withConfirm(btn, '删除', async () => {
       await PresetManager.remove(btn.dataset.presetDel);
       renderPresets();
       showToast('已删除');
-    });
+    }));
   });
 }
 
@@ -754,24 +1129,33 @@ $('exportAllPresetsBtn').addEventListener('click', async () => {
 
 // ======== Tasks ========
 let taskRefreshTimer = null;
+const TASKS_PER_PAGE = 10;
 
 async function loadTasks() {
   const list = $('taskList');
+  const pager = $('taskListPager');
+  // Reset selection & batch button on each render
+  state.taskClipSelectedIds = new Set();
+  $('taskBatchDlBtn').style.display = 'none';
   try {
     const data = await api('GET', '/api/tasks');
     let tasks = data.tasks || [];
 
-    // 过滤掉已隐藏的任务
     const stored = await chrome.storage.local.get('hiddenTaskIds');
     const hiddenIds = new Set(stored.hiddenTaskIds || []);
     tasks = tasks.filter(t => !hiddenIds.has(t.id));
 
     if (tasks.length === 0) {
       list.innerHTML = '<div class="empty">暂无任务</div>';
+      pager.style.display = 'none';
       return;
     }
 
-    list.innerHTML = tasks.map((t) => `
+    const totalPages = Math.ceil(tasks.length / TASKS_PER_PAGE) || 1;
+    if (state.taskListPage >= totalPages) state.taskListPage = totalPages - 1;
+    const pageTasks = tasks.slice(state.taskListPage * TASKS_PER_PAGE, (state.taskListPage + 1) * TASKS_PER_PAGE);
+
+    list.innerHTML = pageTasks.map((t) => `
       <div class="task-item" data-task-id="${t.id}">
         <div class="task-header">
           <span class="task-title">${escapeHtml(t.title || 'Untitled')}</span>
@@ -780,19 +1164,23 @@ async function loadTasks() {
             <button class="remove-style task-del-btn" data-del-task="${t.id}" title="删除">&times;</button>
           </div>
         </div>
+        ${t.status === 'error' && t.error ? `
+          <div style="font-size:11px;color:#ff6b6b;margin-top:5px;padding:5px 6px;background:rgba(255,68,68,0.08);border-radius:4px;border-left:2px solid #ff4444;">
+            ⚠ ${escapeHtml(t.error)}
+          </div>
+        ` : ''}
         ${t.clips && t.clips.length > 0 ? `
           <div class="task-clips">
             ${t.clips.map((c) => `
               <div class="task-clip">
-                <span>${escapeHtml((c.tags || 'No tags').substring(0, 20))}${(c.tags || '').length > 20 ? '...' : ''}</span>
+                ${c.status === 'complete' ? `<input type="checkbox" class="task-clip-check" data-clip-id="${c.id}" style="margin-right:4px;accent-color:#ff7a00;flex-shrink:0;" />` : '<span style="width:16px;display:inline-block;"></span>'}
+                <span style="flex:1;">${escapeHtml((c.tags || 'No tags').substring(0, 20))}${(c.tags || '').length > 20 ? '...' : ''}</span>
                 <div class="dl-btns">
                   ${c.status === 'complete' ? `
                     <button class="dl-btn mp3 open-dl-modal" data-clip-id="${c.id}">下载</button>
                   ` : c.status === 'error' ? `
                     <span style="color:#e74c3c;font-size:10px;">失败</span>
-                  ` : `
-                    <span class="spinner"></span>
-                  `}
+                  ` : `<span class="spinner"></span>`}
                 </div>
               </div>
             `).join('')}
@@ -801,35 +1189,205 @@ async function loadTasks() {
       </div>
     `).join('');
 
-    // Bind download modal buttons
-    list.querySelectorAll('.open-dl-modal').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        openDownloadModal(btn.dataset.clipId);
-      });
-    });
+    if (totalPages > 1) {
+      pager.style.display = 'flex';
+      $('taskPageInfo').textContent = `${state.taskListPage + 1} / ${totalPages}`;
+      $('taskPrevBtn').disabled = state.taskListPage === 0;
+      $('taskNextBtn').disabled = state.taskListPage >= totalPages - 1;
+    } else {
+      pager.style.display = 'none';
+    }
 
-    // Bind delete buttons
+    list.querySelectorAll('.open-dl-modal').forEach((btn) => {
+      btn.addEventListener('click', () => openDownloadModal(btn.dataset.clipId));
+    });
     list.querySelectorAll('.task-del-btn').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const id = btn.dataset.delTask;
+      btn.addEventListener('click', () => withConfirm(btn, '×', async () => {
         try {
-          await api('DELETE', `/api/tasks?id=${id}`);
+          await api('DELETE', `/api/tasks?id=${btn.dataset.delTask}`);
           showToast('已删除');
           loadTasks();
-        } catch (e) {
-          showToast(e.message, 'err');
-        }
+        } catch (e) { showToast(e.message, 'err'); }
+      }));
+    });
+    // Reset batch download button state
+    if (!state.taskClipSelectedIds) state.taskClipSelectedIds = new Set();
+    list.querySelectorAll('.task-clip-check').forEach((cb) => {
+      cb.checked = state.taskClipSelectedIds.has(cb.dataset.clipId);
+      cb.addEventListener('change', () => {
+        if (cb.checked) state.taskClipSelectedIds.add(cb.dataset.clipId);
+        else state.taskClipSelectedIds.delete(cb.dataset.clipId);
+        $('taskBatchDlBtn').style.display = state.taskClipSelectedIds.size > 0 ? 'block' : 'none';
       });
     });
   } catch (err) {
     list.innerHTML = `<div class="empty">加载失败: ${escapeHtml(err.message)}</div>`;
+    pager.style.display = 'none';
   }
 }
+
+$('refreshTasksBtn').addEventListener('click', () => { loadTasks(); showToast('任务队列已刷新'); });
+$('taskPrevBtn').addEventListener('click', () => { state.taskListPage--; loadTasks(); });
+$('taskNextBtn').addEventListener('click', () => { state.taskListPage++; loadTasks(); });
+
+$('taskBatchDlBtn').addEventListener('click', () => {
+  if (!state.taskClipSelectedIds || state.taskClipSelectedIds.size === 0) return;
+  batchDlClipIds = [...state.taskClipSelectedIds];
+  $('batchDlCount').textContent = batchDlClipIds.length;
+  $('batchOptMp3').checked = true; $('batchOptWav').checked = false;
+  $('batchOptLyrics').checked = true; $('batchOptStyle').checked = false;
+  $('batchDlModal').style.display = 'block';
+});
+
 
 function statusLabel(s) {
   const labels = { pending: '等待中', generating: '生成中', complete: '完成', error: '错误' };
   return labels[s] || s;
 }
+
+// ======== Suno Library ========
+async function loadSunoLibrary() {
+  const list = $('sunoLibraryList');
+  list.innerHTML = '<div class="empty">加载中...</div>';
+  state.libSelectedIds = new Set();
+  $('libBatchDownloadBtn').style.display = 'none';
+  $('libSelectAllBtn').textContent = '全选';
+  try {
+    const data = await api('GET', `/api/suno_library?page=${state.sunoLibraryPage}`);
+    const songs = data.songs || [];
+    if (songs.length === 0) {
+      list.innerHTML = '<div class="empty">暂无歌曲，Cookie 未绑定或歌单为空</div>';
+      return;
+    }
+    list.innerHTML = songs.slice(0, 10).map((s) => `
+      <div class="preset-item lib-song-item">
+        <input type="checkbox" class="lib-check" data-song-id="${s.id}" data-audio-url="${escapeHtml(s.audio_url||'')}" data-title="${escapeHtml(s.title||'Song')}" style="margin-right:6px;accent-color:#ff7a00;flex-shrink:0;" />
+        <div style="min-width:0;flex:1;">
+          <div class="preset-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(s.title || 'Untitled')}</div>
+          <div class="preset-tags" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;">${escapeHtml((s.tags || '').substring(0,30))}${(s.tags||'').length>30?'…':''}</div>
+        </div>
+        <div class="flex gap-4" style="flex-shrink:0;">
+          <button class="btn btn-ghost btn-sm lib-dl-btn" data-clip-id="${s.id}">下载</button>
+          <button class="btn btn-primary btn-sm lib-cover-btn" data-lib-clip="${s.id}" data-lib-title="${escapeHtml(s.title||'Song')}">翻唱</button>
+        </div>
+      </div>
+    `).join('');
+
+    // Checkbox selection — store song info for batch modal
+    list.querySelectorAll('.lib-check').forEach(cb => {
+      cb.addEventListener('change', () => {
+        if (cb.checked) state.libSelectedIds.add(cb.dataset.songId);
+        else state.libSelectedIds.delete(cb.dataset.songId);
+        $('libBatchDownloadBtn').style.display = state.libSelectedIds.size > 0 ? 'block' : 'none';
+      });
+    });
+
+    // Individual download — reuse existing download modal
+    list.querySelectorAll('.lib-dl-btn').forEach(btn => {
+      btn.addEventListener('click', () => openDownloadModal(btn.dataset.clipId));
+    });
+
+    // Cover button
+    list.querySelectorAll('.lib-cover-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        await saveUploadHistory(btn.dataset.libClip, btn.dataset.libTitle);
+        renderUploadHistory();
+        enterScene3(btn.dataset.libClip, btn.dataset.libTitle);
+      });
+    });
+
+  } catch (err) {
+    list.innerHTML = `<div class="empty">加载失败: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+$('refreshLibraryBtn').addEventListener('click', loadSunoLibrary);
+$('libraryPrevBtn').addEventListener('click', () => { if(state.sunoLibraryPage>0){state.sunoLibraryPage--;loadSunoLibrary();} });
+$('libraryNextBtn').addEventListener('click', () => { state.sunoLibraryPage++;loadSunoLibrary(); });
+
+$('libSelectAllBtn').addEventListener('click', () => {
+  const checks = $('sunoLibraryList').querySelectorAll('.lib-check');
+  const allChecked = [...checks].every(c => c.checked);
+  checks.forEach(c => {
+    c.checked = !allChecked;
+    if (!allChecked) state.libSelectedIds.add(c.dataset.songId);
+    else state.libSelectedIds.delete(c.dataset.songId);
+  });
+  $('libBatchDownloadBtn').style.display = state.libSelectedIds.size > 0 ? 'block' : 'none';
+  $('libSelectAllBtn').textContent = allChecked ? '全选' : '取消';
+});
+
+// ======== Batch Download Modal ========
+let batchDlClipIds = [];
+
+$('libBatchDownloadBtn').addEventListener('click', () => {
+  const checks = $('sunoLibraryList').querySelectorAll('.lib-check:checked');
+  batchDlClipIds = [...checks].map(cb => cb.dataset.songId).filter(Boolean);
+  $('batchDlCount').textContent = batchDlClipIds.length;
+  $('batchOptMp3').checked = true;
+  $('batchOptWav').checked = false;
+  $('batchOptLyrics').checked = true;
+  $('batchOptStyle').checked = false;
+  $('batchDlModal').style.display = 'block';
+});
+
+$('closeBatchDlModal').addEventListener('click', () => { $('batchDlModal').style.display = 'none'; });
+$('batchDlModal').addEventListener('click', (e) => {
+  if (e.target === $('batchDlModal')) $('batchDlModal').style.display = 'none';
+});
+
+$('batchDlConfirmBtn').addEventListener('click', async () => {
+  const wantMp3 = $('batchOptMp3').checked;
+  const wantWav = $('batchOptWav').checked;
+  const wantLyrics = $('batchOptLyrics').checked;
+  const wantStyle = $('batchOptStyle').checked;
+
+  const btn = $('batchDlConfirmBtn');
+  btn.disabled = true; btn.textContent = '下载中...';
+
+  let downloaded = 0;
+  for (const clipId of batchDlClipIds) {
+    try {
+      const info = await api('GET', `/api/clip?id=${clipId}`);
+      const title = sanitizeFilename(info.title || `song_${clipId.substring(0, 8)}`);
+
+      if (wantMp3 && info.audio_url) {
+        triggerDownloadUrl(info.audio_url, `${title}.mp3`);
+        downloaded++;
+      }
+      if (wantWav) {
+        try {
+          const dl = await api('GET', `/api/download?id=${clipId}&format=wav`);
+          if (dl.url) { triggerDownloadUrl(dl.url, `${title}.wav`); state.used += 1; }
+        } catch { /* skip */ }
+      }
+      if (wantLyrics && info.lyrics) {
+        downloadTextFile(info.lyrics, `${title}.txt`);
+      }
+      if (wantStyle) {
+        const fmtPct = (v) => v != null ? (Number(v) * 100).toFixed(0) + '%' : '默认';
+        const lines = [
+          `歌曲: ${info.title || ''}`,
+          `Clip ID: ${clipId}`,
+          `风格标签: ${info.tags || ''}`,
+          `排除标签: ${info.negative_tags || ''}`,
+          `人声性别: ${info.vocal_gender === 'male' ? '男声' : info.vocal_gender === 'female' ? '女声' : '自动'}`,
+          `Weirdness: ${fmtPct(info.weirdness)}`,
+          `Style Influence: ${fmtPct(info.style_weight)}`,
+          `Audio Influence: ${fmtPct(info.audio_weight)}`,
+        ].join('\n');
+        downloadTextFile(lines, `${title}-风格参数.txt`);
+      }
+      // Small delay to avoid browser throttling
+      await new Promise(r => setTimeout(r, 300));
+    } catch { /* skip failed clips */ }
+  }
+
+  btn.disabled = false; btn.textContent = '开始下载';
+  $('batchDlModal').style.display = 'none';
+  showToast(`已下载 ${downloaded} 首`);
+  if (wantWav) renderDashboard();
+});
 
 async function downloadClip(clipId, format) {
   try {
@@ -900,13 +1458,17 @@ $('dlConfirmBtn').addEventListener('click', async () => {
       }
     }
 
-    // WAV
+    // WAV — add delay to avoid Chrome blocking multiple simultaneous downloads
     if ($('dlOptWav').checked) {
+      await new Promise(r => setTimeout(r, 400));
       try {
         const dl = await api('GET', `/api/download?id=${currentDownloadClipId}&format=wav`);
         if (dl.url) {
           triggerDownloadUrl(dl.url, `${title}.wav`);
           state.used += 1;
+          renderDashboard();
+        } else {
+          showToast('WAV 链接获取失败', 'err');
         }
       } catch (e) {
         showToast('WAV 下载失败: ' + e.message, 'err');
@@ -975,17 +1537,17 @@ function triggerDownloadUrl(url, filename) {
   chrome.downloads.download({ url, filename, saveAs: false });
 }
 
-$('clearTasksBtn').addEventListener('click', async () => {
-  // 记录当前任务ID到已隐藏列表
+$('clearTasksBtn').addEventListener('click', (e) => withConfirm(e.currentTarget, '清空', async () => {
   const data = await chrome.storage.local.get('hiddenTaskIds');
   const hidden = new Set(data.hiddenTaskIds || []);
-  $('taskList').querySelectorAll('[data-task-id]').forEach((el) => {
-    hidden.add(el.dataset.taskId);
-  });
+  $('taskList').querySelectorAll('[data-task-id]').forEach((el) => hidden.add(el.dataset.taskId));
   await chrome.storage.local.set({ hiddenTaskIds: [...hidden] });
   $('taskList').innerHTML = '<div class="empty">暂无任务</div>';
+  $('taskListPager').style.display = 'none';
+  state.taskClipSelectedIds = new Set();
+  $('taskBatchDlBtn').style.display = 'none';
   showToast('已清空');
-});
+}));
 
 function startAutoRefresh() {
   stopAutoRefresh();

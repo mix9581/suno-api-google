@@ -1,10 +1,20 @@
 // 点击插件图标 → 打开侧边栏
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 
-// 上次推送的 cookie 指纹（避免重复推送同一个 cookie）
-let lastPushedCookieHash = '';
 
-// 监听 suno.com 请求，自动捕获 Cookie
+// 上次捕获的 cookie 指纹（避免重复写 storage）
+let lastCapturedHash = '';
+
+// 当 lastCookieFingerprint 被外部清除时，同步重置内存变量
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.lastCookieFingerprint) {
+    if (changes.lastCookieFingerprint.newValue === undefined) {
+      lastCapturedHash = '';
+    }
+  }
+});
+
+// 监听 suno.com 请求，自动捕获 Cookie 并保存到本地（不推送到服务器）
 chrome.webRequest.onSendHeaders.addListener(
   (details) => {
     const cookieHeader = details.requestHeaders?.find(
@@ -12,54 +22,28 @@ chrome.webRequest.onSendHeaders.addListener(
     );
 
     if (cookieHeader?.value && cookieHeader.value.includes('__client=')) {
-      // 用 __client token 的前 50 字符做去重指纹
       const clientMatch = cookieHeader.value.match(/__client=([^;]{50})/);
       const fingerprint = clientMatch ? clientMatch[1] : '';
 
-      // 跟上次一样的 cookie 就不重复处理
-      if (fingerprint && fingerprint === lastPushedCookieHash) return;
+      if (fingerprint && fingerprint === lastCapturedHash) return;
 
-      chrome.storage.local.get(['apiKey', 'apiUrl', 'lastCookieFingerprint'], async (data) => {
-        // 跟已存的指纹一样也跳过
+      chrome.storage.local.get(['lastCookieFingerprint'], (data) => {
         if (fingerprint && fingerprint === data.lastCookieFingerprint) return;
 
-        // 保存 cookie 到本地
+        // Cookie 仅保存在本地，随每次请求通过 X-Suno-Cookie 头发送
         chrome.storage.local.set({
           sunoCookie: cookieHeader.value,
           capturedAt: new Date().toISOString(),
           lastCookieFingerprint: fingerprint,
         });
 
-        lastPushedCookieHash = fingerprint;
-
-        // 如果已登录，自动推送 Cookie 到服务器
-        if (data.apiKey && data.apiUrl) {
-          try {
-            const resp = await fetch(`${data.apiUrl.replace(/\/+$/, '')}/api/auth/bind_cookie`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-API-Key': data.apiKey,
-                'ngrok-skip-browser-warning': '1',
-              },
-              body: JSON.stringify({ cookie: cookieHeader.value }),
-            });
-            const result = await resp.json();
-            if (result.success) {
-              chrome.storage.local.set({
-                cookiePushStatus: 'ok',
-                cookiePushTime: new Date().toISOString(),
-              });
-            }
-          } catch (e) {
-            // 静默失败
-          }
-        }
+        lastCapturedHash = fingerprint;
       });
     }
   },
   {
     urls: [
+      'https://suno.com/*',
       'https://studio-api.prod.suno.com/*',
       'https://auth.suno.com/*',
     ],
