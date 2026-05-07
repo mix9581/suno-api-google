@@ -137,29 +137,27 @@ async function doLogin() {
   try {
     const data = await api('GET', '/api/auth/status');
 
-    // Clear old cookie from storage to force fresh capture
-    await chrome.storage.local.remove(['sunoCookie', 'lastCookieFingerprint', 'capturedAt', 'cookiePushStatus', 'cookiePushTime']);
+    // 清除所有旧数据，确保切换账号后完全隔离
+    await chrome.storage.local.remove([
+      'sunoCookie', 'capturedAt',
+      'lastCookieFingerprint', 'cookiePushStatus', 'cookiePushTime',
+      'uploadHistory', 'hiddenTaskIds',
+    ]);
 
-    // Save credentials + apiUrl (background.js needs apiUrl for auto-push)
     await chrome.storage.local.set({ apiKey: keyVal, apiUrl: API_URL });
 
-    // Update state with server response
     state.userName = data.name;
     state.quota = data.quota;
     state.used = data.used;
-    state.cookieValid = false; // Force cookie capture
+    state.cookieValid = false;
     state.sunoCredits = null;
 
-    // Transition to Scene 2
     renderDashboard();
     showScene('scene2');
     startAutoRefresh();
 
-    // Auto-trigger cookie capture after login
-    setTimeout(() => {
-      const btn = $('captureCookieBtn');
-      if (btn) btn.click();
-    }, 500);
+    // 提示用户切换 Suno 账号后点获取 Cookie
+    showToast('登录成功！请确认 suno.com 已切换到你的账号，然后点「刷新 Cookie」', 'ok');
   } catch (err) {
     showLoginError(err.message);
   } finally {
@@ -222,14 +220,17 @@ async function doEmailLogin() {
     const data = await resp.json();
     if (!resp.ok) { errMsg.textContent = data.error || '登录失败'; errEl.style.display = 'flex'; return; }
 
-    // Clear old cookie from storage to force fresh capture
-    await chrome.storage.local.remove(['sunoCookie', 'lastCookieFingerprint', 'capturedAt', 'cookiePushStatus', 'cookiePushTime']);
+    await chrome.storage.local.remove([
+      'sunoCookie', 'capturedAt',
+      'lastCookieFingerprint', 'cookiePushStatus', 'cookiePushTime',
+      'uploadHistory', 'hiddenTaskIds',
+    ]);
 
     state.apiKey = data.api_key;
     state.userName = data.name;
     state.quota = data.quota;
     state.used = data.used;
-    state.cookieValid = false; // Force cookie capture
+    state.cookieValid = false;
     state.sunoCredits = null;
 
     await chrome.storage.local.set({ apiKey: data.api_key, apiUrl: API_URL });
@@ -238,11 +239,7 @@ async function doEmailLogin() {
     showScene('scene2');
     startAutoRefresh();
 
-    // Auto-trigger cookie capture after login
-    setTimeout(() => {
-      const btn = $('captureCookieBtn');
-      if (btn) btn.click();
-    }, 500);
+    showToast('登录成功！请确认 suno.com 已切换到你的账号，然后点「刷新 Cookie」', 'ok');
   } catch (e) {
     errMsg.textContent = '网络错误，请检查连接'; errEl.style.display = 'flex';
   } finally {
