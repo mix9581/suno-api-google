@@ -10,10 +10,18 @@
 <div id="scene1" class="scene active">
   <div class="header">
     <div class="header-left">
-      <h1>Suno Cover Tool</h1>
+      <h1><a href="https://www.coze.cn/s/QgbIgioewoE/" target="_blank" style="text-decoration:none;"><span class="gradient-qh">青幻工具箱</span></a></h1>
     </div>
   </div>
-  <div style="padding:16px;">
+
+  <!-- 登录方式 Tab -->
+  <div class="login-tabs">
+    <button class="login-tab active" id="tabApiKey">API Key</button>
+    <button class="login-tab" id="tabEmail">邮箱登录</button>
+  </div>
+
+  <!-- API Key 登录 -->
+  <div id="formApiKey" style="padding:16px;">
     <div class="form-group">
       <label class="form-label">API Key</label>
       <input id="loginApiKey" class="form-input" type="password" placeholder="sk-xxxxxxxxxxxxxxxx" />
@@ -24,7 +32,107 @@
       <span id="loginErrorMsg"></span>
     </div>
     <div class="text-sm text-muted mt-12" style="text-align:center;">
-      登录后可一键获取 Suno Cookie
+      没有 Key？切换到<a href="#" id="switchToEmail" style="color:#aaa;margin-left:4px;">邮箱注册</a>
+    </div>
+    <div style="margin-top:20px;padding-top:16px;border-top:1px solid #1a1a1a;text-align:center;">
+      <a href="https://www.coze.cn/s/cSB2Cz5tQOM/" target="_blank"
+         style="color:#555;font-size:11px;text-decoration:none;letter-spacing:0.3px;">
+        青幻工具箱 — 玩音乐必备工具箱
+      </a>
+    </div>
+  </div>
+
+  <!-- 邮箱登录 -->
+  <div id="formEmail" style="display:none; padding:16px;">
+    <!-- 登录面板 -->
+    <div id="emailLoginPanel">
+      <div class="form-group">
+        <label class="form-label">邮箱</label>
+        <input id="emailInput" class="form-input" type="email" placeholder="your@email.com" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">密码</label>
+        <input id="emailPasswordInput" class="form-input" type="password" placeholder="请输入密码" />
+      </div>
+      <button id="emailLoginBtn" class="btn btn-primary btn-block mt-8">登录</button>
+      <div id="emailLoginError" class="status-card err mt-8" style="display:none;">
+        <span class="status-dot"></span>
+        <span id="emailLoginErrorMsg"></span>
+      </div>
+      <div class="text-sm text-muted mt-12" style="text-align:center;">
+        还没有账号？<a href="#" id="showRegister" style="color:#aaa;">立即注册</a>
+        &nbsp;·&nbsp;
+        <a href="#" id="showForgot" style="color:#aaa;">忘记密码</a>
+      </div>
+    </div>
+
+    <!-- 忘记密码面板 -->
+    <div id="emailForgotPanel" style="display:none;">
+      <div id="forgotStep1">
+        <div class="form-group">
+          <label class="form-label">注册邮箱</label>
+          <input id="forgotEmail" class="form-input" type="email" placeholder="your@email.com" />
+        </div>
+        <button id="sendCodeBtn" class="btn btn-primary btn-block mt-8">发送验证码</button>
+        <div id="sendCodeMsg" class="status-card ok mt-8" style="display:none;">
+          <span class="status-dot"></span><span id="sendCodeMsgText"></span>
+        </div>
+        <div id="sendCodeErr" class="status-card err mt-8" style="display:none;">
+          <span class="status-dot"></span><span id="sendCodeErrText"></span>
+        </div>
+      </div>
+      <div id="forgotStep2" style="display:none;margin-top:12px;">
+        <div class="form-group">
+          <label class="form-label">邮箱验证码</label>
+          <input id="resetCode" class="form-input" type="text" placeholder="6 位验证码" maxlength="6" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">新密码（至少 6 位）</label>
+          <input id="newPassword" class="form-input" type="password" placeholder="设置新密码" />
+        </div>
+        <button id="resetPasswordBtn" class="btn btn-primary btn-block mt-8">确认重置</button>
+        <div id="resetErr" class="status-card err mt-8" style="display:none;">
+          <span class="status-dot"></span><span id="resetErrText"></span>
+        </div>
+        <div id="resetOk" class="status-card ok mt-8" style="display:none;">
+          <span class="status-dot"></span><span>密码重置成功，请重新登录</span>
+        </div>
+      </div>
+      <div class="text-sm text-muted mt-12" style="text-align:center;">
+        <a href="#" id="backToLogin" style="color:#aaa;">返回登录</a>
+      </div>
+    </div>
+
+    <!-- 注册面板 -->
+    <div id="emailRegisterPanel" style="display:none;">
+      <div class="form-group">
+        <label class="form-label">昵称（选填）</label>
+        <input id="regName" class="form-input" type="text" placeholder="你的昵称" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">邮箱</label>
+        <input id="regEmail" class="form-input" type="email" placeholder="your@email.com" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">密码（至少 6 位）</label>
+        <input id="regPassword" class="form-input" type="password" placeholder="设置密码" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">确认密码</label>
+        <input id="regConfirm" class="form-input" type="password" placeholder="再次输入密码" />
+      </div>
+      <button id="registerBtn" class="btn btn-primary btn-block mt-8">注册账号</button>
+      <div id="registerError" class="status-card err mt-8" style="display:none;">
+        <span class="status-dot"></span>
+        <span id="registerErrorMsg"></span>
+      </div>
+      <div id="registerSuccess" class="status-card ok mt-8" style="display:none;">
+        <span class="status-dot"></span>
+        <span id="registerSuccessMsg"></span>
+      </div>
+      <div class="text-sm text-muted mt-12" style="text-align:center;">
+        已有账号？<a href="#" id="showLogin" style="color:#aaa;">返回登录</a>
+      </div>
     </div>
   </div>
 </div>
@@ -33,7 +141,7 @@
 <div id="scene2" class="scene">
   <div class="header">
     <div class="header-left">
-      <h1>Suno Cover Tool</h1>
+      <h1><a href="https://www.coze.cn/s/QgbIgioewoE/" target="_blank" style="text-decoration:none;"><span class="gradient-qh">青幻工具箱</span></a></h1>
       <span class="subtitle" id="userName"></span>
     </div>
     <div class="header-right">
@@ -60,13 +168,16 @@
       </div>
       <div class="quota-text mt-8">
         <span class="text-muted">Suno 积分: <span id="sunoCredits">--</span></span>
-        <span class="text-muted" id="quotaRemaining"></span>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="text-muted" id="quotaRemaining"></span>
+          <button id="rechargeBtn" class="btn btn-sm" style="padding:2px 10px;font-size:10px;background:#ff7a00;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600;">立即充值</button>
+        </div>
       </div>
     </div>
 
     <!-- 上传 -->
     <div class="section">
-      <div class="section-title">上传音频</div>
+      <div class="section-title" style="color:#ff7a00;">上传音频批量翻唱</div>
       <div class="upload-area" id="uploadArea">
         <div class="upload-icon">&#x1F3B5;</div>
         <div class="upload-text">点击选择或拖拽音频文件</div>
@@ -86,16 +197,43 @@
     <!-- 已上传音频 -->
     <div class="section">
       <div class="section-title">
-        <span>已上传音频</span>
-        <button class="btn btn-ghost btn-sm" id="clearHistoryBtn">清空</button>
+        <span style="color:#ff7a00;">已上传音频</span>
+        <div class="flex gap-4">
+          <button class="btn btn-ghost btn-sm" id="historyBatchDlBtn" style="display:none;">批量下载</button>
+          <button class="btn btn-ghost btn-sm" id="clearHistoryBtn">清空</button>
+        </div>
       </div>
-      <div id="uploadHistory" class="scroll-area"></div>
+      <div id="uploadHistory"></div>
+      <div id="uploadHistoryPager" style="display:none;justify-content:space-between;align-items:center;margin-top:6px;">
+        <button id="historyPrevBtn" class="btn btn-ghost btn-sm">‹</button>
+        <span id="historyPageInfo" class="text-sm text-muted"></span>
+        <button id="historyNextBtn" class="btn btn-ghost btn-sm">›</button>
+      </div>
+    </div>
+
+    <!-- 任务队列 -->
+    <div class="section">
+      <div class="section-title">
+        <span style="color:#ff7a00;">任务队列</span>
+        <div class="flex gap-4">
+          <span class="text-sm text-muted" id="autoRefreshLabel">60s自动刷新</span>
+          <button class="btn btn-ghost btn-sm" id="taskBatchDlBtn" style="display:none;">批量下载</button>
+          <button class="btn btn-ghost btn-sm" id="refreshTasksBtn">刷新</button>
+          <button class="btn btn-ghost btn-sm" id="clearTasksBtn">清空</button>
+        </div>
+      </div>
+      <div id="taskList"></div>
+      <div id="taskListPager" style="display:none;justify-content:space-between;align-items:center;margin-top:6px;">
+        <button id="taskPrevBtn" class="btn btn-ghost btn-sm">‹</button>
+        <span id="taskPageInfo" class="text-sm text-muted"></span>
+        <button id="taskNextBtn" class="btn btn-ghost btn-sm">›</button>
+      </div>
     </div>
 
     <!-- 预设 -->
     <div class="section">
       <div class="section-title">
-        <span>风格预设</span>
+        <span style="color:#ff7a00;">风格预设</span>
         <div class="flex gap-4">
           <button class="btn btn-ghost btn-sm" id="importPresetBtn">导入</button>
           <button class="btn btn-ghost btn-sm" id="exportAllPresetsBtn">导出全部</button>
@@ -106,17 +244,91 @@
       <input type="file" id="importPresetInput" accept=".json" style="display:none;" />
     </div>
 
-    <!-- 任务队列 -->
+    <!-- My Workspace -->
     <div class="section">
       <div class="section-title">
-        <span>任务队列</span>
+        <span style="color:#ff7a00;">My Workspace</span>
         <div class="flex gap-4">
-          <span class="text-sm text-muted" id="autoRefreshLabel">每 60 秒自动刷新</span>
-          <button class="btn btn-ghost btn-sm" id="clearTasksBtn">清空</button>
+          <button class="btn btn-ghost btn-sm" id="libBatchDownloadBtn" style="display:none;">批量下载</button>
+          <button class="btn btn-ghost btn-sm" id="libSelectAllBtn">全选</button>
+          <button class="btn btn-ghost btn-sm" id="libraryPrevBtn">‹</button>
+          <button class="btn btn-ghost btn-sm" id="libraryNextBtn">›</button>
+          <button class="btn btn-ghost btn-sm" id="refreshLibraryBtn">刷新</button>
         </div>
       </div>
-      <div id="taskList" class="scroll-area"></div>
+      <div id="sunoLibraryList"></div>
+    <!-- 历史更新 -->
+    <div style="margin-top:4px;border-top:1px solid #1a1a1a;">
+      <button id="changelogToggle" style="width:100%;background:none;border:none;color:#555;font-size:11px;padding:10px 16px;cursor:pointer;text-align:left;display:flex;justify-content:space-between;align-items:center;">
+        <span>历史更新</span><span id="changelogArrow" style="font-size:10px;">▾</span>
+      </button>
+      <div id="changelogBody" style="display:none;padding:0 16px 12px;max-height:220px;overflow-y:auto;">
+
+        <div class="changelog-item">
+          <div class="changelog-ver">v2.3.0 <span class="changelog-date">2026-05-08</span></div>
+          <ul class="changelog-list">
+            <li>服务器升级 HTTPS（api.ailoujiwai.com），连接更稳定</li>
+            <li>修复 Cookie 串号问题：每个 API Key 独立绑定自己的 Suno 账号</li>
+            <li>新增品牌图标与青幻工具箱 Logo</li>
+          </ul>
+        </div>
+
+        <div class="changelog-item">
+          <div class="changelog-ver">v2.2.0 <span class="changelog-date">2026-05-07</span></div>
+          <ul class="changelog-list">
+            <li>新增邮箱注册 / 登录 / 忘记密码（邮件验证码）</li>
+            <li>充值弹窗：复制 API Key + 微信二维码（1元=20额度）</li>
+            <li>My Workspace：浏览 Suno 歌单，支持翻唱 / 下载 / 批量下载</li>
+            <li>任务队列：分页显示、手动刷新、勾选批量下载</li>
+            <li>已上传音频：分页、勾选批量下载、单条删除</li>
+            <li>下载格式可选：MP3 / WAV / 歌词 / 风格参数</li>
+            <li>删除操作二次确认（防误删）</li>
+            <li>配置翻唱页自动填入原曲歌词</li>
+            <li>全新图标与青幻渐变标题（可点击跳转）</li>
+          </ul>
+        </div>
+
+        <div class="changelog-item">
+          <div class="changelog-ver">v2.1.0 <span class="changelog-date">2026-05-06</span></div>
+          <ul class="changelog-list">
+            <li>API Key 只管额度，Cookie 由浏览器独立携带（多账号不互串）</li>
+            <li>翻唱支持 CAPTCHA 自动解（2captcha）</li>
+            <li>支持 Suno 短链解析（suno.com/s/xxx）</li>
+            <li>风格预设：导入 / 导出 / 新建 / 编辑 / 删除</li>
+            <li>任务队列：错误原因展示（CAPTCHA / 网络 / 积分不足）</li>
+          </ul>
+        </div>
+
+        <div class="changelog-item">
+          <div class="changelog-ver">v2.0.0 <span class="changelog-date">2026-05-05</span></div>
+          <ul class="changelog-list">
+            <li>首次部署至火山引擎服务器</li>
+            <li>API Key 登录 + 额度管理</li>
+            <li>上传音频 → 配置翻唱风格 → 提交任务</li>
+            <li>任务队列实时状态刷新</li>
+          </ul>
+        </div>
+
+      </div>
     </div>
+  </div>
+</div>
+
+<!-- ======== 批量下载选项弹窗 ======== -->
+<div id="batchDlModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:200;padding:40px 20px;">
+  <div style="background:#111;border-radius:10px;padding:16px;max-width:360px;margin:0 auto;">
+    <div class="flex-between mb-8">
+      <strong style="font-size:14px;">批量下载选项</strong>
+      <button class="remove-style" id="closeBatchDlModal">&times;</button>
+    </div>
+    <div style="font-size:11px;color:#666;margin-bottom:12px;">已选 <span id="batchDlCount">0</span> 首，请选择下载内容：</div>
+    <div class="form-group">
+      <div class="checkbox-group"><input type="checkbox" id="batchOptMp3" checked /><label for="batchOptMp3">MP3 音频</label></div>
+      <div class="checkbox-group"><input type="checkbox" id="batchOptWav" /><label for="batchOptWav">WAV 音频（消耗 1 额度/首）</label></div>
+      <div class="checkbox-group"><input type="checkbox" id="batchOptLyrics" checked /><label for="batchOptLyrics">歌词 (TXT)</label></div>
+      <div class="checkbox-group"><input type="checkbox" id="batchOptStyle" /><label for="batchOptStyle">音乐风格 + 高级参数 (TXT)</label></div>
+    </div>
+    <button id="batchDlConfirmBtn" class="btn btn-success btn-block mt-8">开始下载</button>
   </div>
 </div>
 
@@ -137,14 +349,17 @@
 
     <!-- 歌词 -->
     <div class="form-group">
-      <label class="form-label">歌词（可选，留空自动提取）</label>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <label class="form-label" style="margin-bottom:0;">歌词</label>
+        <button type="button" id="clearLyricsBtn" style="background:none;border:none;color:#555;font-size:10px;cursor:pointer;padding:0 2px;">清空</button>
+      </div>
       <textarea id="lyricsInput" class="form-input" rows="4" placeholder="(Verse 1)&#10;歌词内容..."></textarea>
     </div>
 
     <!-- 风格卡片 -->
     <div class="section">
       <div class="section-title">
-        <span>风格 (<span id="styleCount">1</span>/5)</span>
+        <span style="color:#ff7a00;">风格 (<span id="styleCount">1</span>/5)</span>
         <button class="btn btn-primary btn-sm" id="addStyleBtn">+ 添加风格</button>
       </div>
       <div id="styleCards"></div>
@@ -234,6 +449,21 @@
   </div>
 </div>
 
+<!-- ======== 充值弹窗 ======== -->
+<div id="rechargeModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:200;padding:20px;overflow-y:auto;">
+  <div style="background:#111;border-radius:12px;padding:20px;max-width:340px;margin:0 auto;text-align:center;">
+    <div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:4px;">联系充值</div>
+    <div style="font-size:12px;color:#ff7a00;margin-bottom:12px;font-weight:600;">1元 = 20工具箱额度</div>
+    <div id="rechargeKeyTip" class="status-card ok" style="margin-bottom:12px;text-align:left;">
+      <span class="status-dot"></span>
+      <span style="font-size:11px;">API Key 已复制！发送给微信好友完成充值</span>
+    </div>
+    <div style="font-size:12px;color:#aaa;margin-bottom:10px;">添加微信，发送邮箱号或API Key即可充值目标账户</div>
+    <img src="wechat_qr.png" style="width:100%;max-width:280px;border-radius:8px;display:block;margin:0 auto 12px;" />
+    <div style="font-size:12px;color:#fff;font-weight:600;margin-bottom:16px;">扫码添加微信，发送 API Key 即可充值</div>
+    <button id="closeRechargeModal" class="btn btn-ghost btn-block">关闭</button>
+  </div>
+</div>
 <script src="config.js"></script>
 <script src="presets.js"></script>
 <script src="popup.js"></script>

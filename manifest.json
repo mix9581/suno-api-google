@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Suno Cover Tool",
-  "version": "2.1.0",
-  "description": "批量翻唱生成工具 — 管理 API Key、上传音频、配置风格、下载成品",
+  "name": "青幻工具箱",
+  "version": "2.3.0",
+  "description": "AI 翻唱生成工具箱 — 管理 API Key、上传音频、配置风格、下载成品",
   "permissions": ["cookies", "webRequest", "storage", "tabs", "downloads", "sidePanel"],
   "host_permissions": [
     "https://*.suno.com/*",
