@@ -381,52 +381,67 @@ $('resetPasswordBtn').addEventListener('click', async () => {
 // ======== One-click Cookie Capture ========
 $('captureCookieBtn').addEventListener('click', async () => {
   const btn = $('captureCookieBtn');
-  btn.textContent = '等待捕获...';
+  btn.textContent = '读取中...';
   btn.disabled = true;
 
-  // 如果当前标签页是 suno.com，直接刷新；否则开新标签
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    const currentUrl = tabs[0]?.url || '';
-    if (currentUrl.includes('suno.com')) {
-      chrome.tabs.reload(tabs[0].id);
-    } else {
-      chrome.tabs.create({ url: 'https://suno.com' });
-    }
-  });
+  // 直接从浏览器 cookie 存储读取 suno.com 的 cookie
+  // 不依赖 background.js 的被动抓取，避免多 tab 干扰
+  async function readSunoCookies() {
+    return new Promise((resolve) => {
+      chrome.cookies.getAll({ domain: 'suno.com' }, resolve);
+    });
+  }
 
-  // Wait for background.js to capture cookie (poll storage every 500ms for 15s)
-  let attempts = 0;
-  const maxAttempts = 30;
-  const pollInterval = setInterval(async () => {
-    attempts++;
-    const data = await chrome.storage.local.get(['sunoCookie']);
+  async function tryBindCookie() {
+    const cookies = await readSunoCookies();
+    const hasClient = cookies.some((c) => c.name === '__client');
+    if (!hasClient) return null;
+    // 拼成完整 cookie 字符串（与浏览器请求头格式一致）
+    return cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+  }
 
-    if (data.sunoCookie && data.sunoCookie.includes('__client=')) {
-      clearInterval(pollInterval);
-      // 将本地 cookie 绑定到服务器（存入 DB，与当前 API Key 关联）
-      try {
-        const result = await api('POST', '/api/auth/bind_cookie', { cookie: data.sunoCookie });
-        if (result.success) {
-          state.cookieValid = true;
-          state.sunoCredits = result.credits_left;
-          renderDashboard();
-          showToast('Cookie 绑定成功，Suno 账号已就绪');
-        } else {
-          showToast('Cookie 绑定失败: ' + (result.error || '未知错误'), 'err');
-        }
-      } catch (e) {
-        showToast('Cookie 绑定失败: ' + e.message, 'err');
-      } finally {
-        btn.textContent = '刷新 Cookie';
-        btn.disabled = false;
+  let cookieStr = await tryBindCookie();
+
+  // 如果没读到，说明用户还没打开 suno.com，打开后再等 3 秒重试一次
+  if (!cookieStr) {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const url = tabs[0]?.url || '';
+      if (url.includes('suno.com')) {
+        chrome.tabs.reload(tabs[0].id);
+      } else {
+        chrome.tabs.create({ url: 'https://suno.com' });
       }
-    } else if (attempts >= maxAttempts) {
-      clearInterval(pollInterval);
-      showToast('未检测到 Cookie，请确保已在 suno.com 登录', 'err');
-      btn.textContent = state.cookieValid ? '刷新 Cookie' : '获取 Cookie';
-      btn.disabled = false;
+    });
+    await new Promise((r) => setTimeout(r, 3000));
+    cookieStr = await tryBindCookie();
+  }
+
+  if (!cookieStr || !cookieStr.includes('__client=')) {
+    showToast('未检测到 suno.com 登录状态，请先打开 suno.com 并登录', 'err');
+    btn.textContent = state.cookieValid ? '刷新 Cookie' : '获取 Cookie';
+    btn.disabled = false;
+    return;
+  }
+
+  // 同步存到 chrome.storage.local（供 background.js 参考用）
+  await chrome.storage.local.set({ sunoCookie: cookieStr, capturedAt: new Date().toISOString() });
+
+  try {
+    const result = await api('POST', '/api/auth/bind_cookie', { cookie: cookieStr });
+    if (result.success) {
+      state.cookieValid = true;
+      state.sunoCredits = result.credits_left;
+      renderDashboard();
+      showToast('Cookie 绑定成功，Suno 账号已就绪');
+    } else {
+      showToast('Cookie 绑定失败: ' + (result.error || '未知错误'), 'err');
     }
-  }, 500);
+  } catch (e) {
+    showToast('Cookie 绑定失败: ' + e.message, 'err');
+  } finally {
+    btn.textContent = '刷新 Cookie';
+    btn.disabled = false;
+  }
 });
 
 // ======== Scene 2: Dashboard ========
