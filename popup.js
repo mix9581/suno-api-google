@@ -75,12 +75,6 @@ async function api(method, path, body = null) {
     'ngrok-skip-browser-warning': '1',
   };
 
-  // 每次请求携带本地 Suno Cookie
-  const storageData = await chrome.storage.local.get(['sunoCookie']);
-  if (storageData.sunoCookie) {
-    headers['X-Suno-Cookie'] = storageData.sunoCookie;
-  }
-
   const opts = { method, headers };
   if (body) {
     headers['Content-Type'] = 'application/json';
@@ -409,19 +403,19 @@ $('captureCookieBtn').addEventListener('click', async () => {
 
     if (data.sunoCookie && data.sunoCookie.includes('__client=')) {
       clearInterval(pollInterval);
-      // Cookie 已存入本地，通过 status 接口验证（api() 会自动带上 X-Suno-Cookie 头）
+      // 将本地 cookie 绑定到服务器（存入 DB，与当前 API Key 关联）
       try {
-        const statusData = await api('GET', '/api/auth/status');
-        state.cookieValid = statusData.cookie_valid;
-        state.sunoCredits = statusData.suno_credits;
-        renderDashboard();
-        if (statusData.cookie_valid) {
-          showToast('Cookie 获取成功，Suno 账号已就绪');
+        const result = await api('POST', '/api/auth/bind_cookie', { cookie: data.sunoCookie });
+        if (result.success) {
+          state.cookieValid = true;
+          state.sunoCredits = result.credits_left;
+          renderDashboard();
+          showToast('Cookie 绑定成功，Suno 账号已就绪');
         } else {
-          showToast('Cookie 已捕获，但 Suno 账号验证失败，请确认已登录 suno.com', 'err');
+          showToast('Cookie 绑定失败: ' + (result.error || '未知错误'), 'err');
         }
       } catch (e) {
-        showToast('Cookie 验证失败: ' + e.message, 'err');
+        showToast('Cookie 绑定失败: ' + e.message, 'err');
       } finally {
         btn.textContent = '刷新 Cookie';
         btn.disabled = false;
@@ -568,12 +562,9 @@ async function handleUpload(file) {
     formData.append('file', file);
 
     const url = `${state.apiUrl.replace(/\/+$/, '')}/api/upload_audio`;
-    const uploadStorage = await chrome.storage.local.get(['sunoCookie']);
-    const uploadHeaders = { 'X-API-Key': state.apiKey, 'ngrok-skip-browser-warning': '1' };
-    if (uploadStorage.sunoCookie) uploadHeaders['X-Suno-Cookie'] = uploadStorage.sunoCookie;
     const resp = await fetch(url, {
       method: 'POST',
-      headers: uploadHeaders,
+      headers: { 'X-API-Key': state.apiKey, 'ngrok-skip-browser-warning': '1' },
       body: formData,
     });
     const data = await resp.json();
