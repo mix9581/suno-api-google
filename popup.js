@@ -384,39 +384,38 @@ $('captureCookieBtn').addEventListener('click', async () => {
   btn.textContent = '读取中...';
   btn.disabled = true;
 
-  // 直接从浏览器 cookie 存储读取 suno.com 的 cookie
-  // 不依赖 background.js 的被动抓取，避免多 tab 干扰
-  async function readSunoCookies() {
-    return new Promise((resolve) => {
-      chrome.cookies.getAll({ domain: 'suno.com' }, resolve);
-    });
-  }
-
-  async function tryBindCookie() {
-    const cookies = await readSunoCookies();
-    const hasClient = cookies.some((c) => c.name === '__client');
-    if (!hasClient) return null;
-    // 拼成完整 cookie 字符串（与浏览器请求头格式一致）
-    return cookies.map((c) => `${c.name}=${c.value}`).join('; ');
-  }
-
-  let cookieStr = await tryBindCookie();
-
-  // 如果没读到，说明用户还没打开 suno.com，打开后再等 3 秒重试一次
-  if (!cookieStr) {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      const url = tabs[0]?.url || '';
-      if (url.includes('suno.com')) {
-        chrome.tabs.reload(tabs[0].id);
+  // 先刷新 suno.com 让 Clerk 重新签发 token，再读 cookie
+  // 这与旧行为一致：reload 触发 Clerk JS 刷新会话，确保 __client 是最新的
+  await new Promise((resolve) => {
+    chrome.tabs.query({}, (allTabs) => {
+      const sunoTab = allTabs.find((t) => t.url && t.url.includes('suno.com'));
+      if (sunoTab) {
+        chrome.tabs.reload(sunoTab.id, {}, resolve);
       } else {
-        chrome.tabs.create({ url: 'https://suno.com' });
+        chrome.tabs.create({ url: 'https://suno.com' }, () => resolve());
       }
     });
-    await new Promise((r) => setTimeout(r, 3000));
-    cookieStr = await tryBindCookie();
+  });
+
+  // 等待页面加载完成，Clerk JS 完成 session 刷新
+  await new Promise((r) => setTimeout(r, 4000));
+
+  // 从浏览器 cookie 存储直接读取，避免多 tab 被动抓取的干扰
+  const cookies = await new Promise((resolve) => {
+    chrome.cookies.getAll({ domain: 'suno.com' }, resolve);
+  });
+
+  const hasClient = cookies.some((c) => c.name === '__client');
+  if (!hasClient) {
+    showToast('未检测到 suno.com 登录状态，请先打开 suno.com 并登录', 'err');
+    btn.textContent = state.cookieValid ? '刷新 Cookie' : '获取 Cookie';
+    btn.disabled = false;
+    return;
   }
 
-  if (!cookieStr || !cookieStr.includes('__client=')) {
+  const cookieStr = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+
+  if (!cookieStr.includes('__client=')) {
     showToast('未检测到 suno.com 登录状态，请先打开 suno.com 并登录', 'err');
     btn.textContent = state.cookieValid ? '刷新 Cookie' : '获取 Cookie';
     btn.disabled = false;
