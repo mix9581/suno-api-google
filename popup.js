@@ -429,10 +429,20 @@ $('captureCookieBtn').addEventListener('click', async () => {
   try {
     const result = await api('POST', '/api/auth/bind_cookie', { cookie: cookieStr });
     if (result.success) {
-      state.cookieValid = true;
-      state.sunoCredits = result.credits_left;
-      renderDashboard();
-      showToast('Cookie 绑定成功，Suno 账号已就绪');
+      if (result.credits_left !== null && result.credits_left !== undefined) {
+        // Cookie saved and Suno account verified
+        state.cookieValid = true;
+        state.sunoCredits = result.credits_left;
+        renderDashboard();
+        showToast('Cookie 绑定成功，Suno 账号已就绪');
+      } else {
+        // Cookie saved to DB but server couldn't verify with Suno
+        state.cookieValid = false;
+        state.sunoCredits = null;
+        renderDashboard();
+        const errMsg = result.cookie_error || '服务器无法验证 Suno 账号';
+        showToast('Cookie 已保存，但验证失败: ' + errMsg, 'err');
+      }
     } else {
       showToast('Cookie 绑定失败: ' + (result.error || '未知错误'), 'err');
     }
