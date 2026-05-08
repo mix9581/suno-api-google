@@ -54,6 +54,7 @@ function showScene(sceneId) {
   document.querySelectorAll('.scene').forEach((el) => el.classList.remove('active'));
   $(sceneId).classList.add('active');
   state.scene = sceneId;
+  window.scrollTo(0, 0);
 }
 
 // ======== Toast ========
