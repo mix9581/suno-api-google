@@ -44,7 +44,7 @@ body {
 
 /* Scenes */
 .scene { display: none; }
-.scene.active { display: block; overflow-y: auto; }
+.scene.active { display: block; }
 
 /* Login Tabs */
 .login-tabs {

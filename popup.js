@@ -499,13 +499,21 @@ function renderDashboard() {
 }
 
 // ======== Changelog Toggle ========
-$('changelogToggle').addEventListener('click', () => {
-  const body = $('changelogBody');
-  const arrow = $('changelogArrow');
-  const open = body.style.display !== 'none';
-  body.style.display = open ? 'none' : 'block';
-  arrow.textContent = open ? '▾' : '▴';
-});
+function makeChangelogToggle(toggleId, bodyId, arrowId) {
+  $(toggleId).addEventListener('click', () => {
+    const body = $(bodyId);
+    const arrow = $(arrowId);
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : 'block';
+    arrow.textContent = open ? '▾' : '▴';
+  });
+}
+makeChangelogToggle('changelogToggle', 'changelogBody', 'changelogArrow');
+
+// 登录页 changelog 复用相同内容
+const cl1 = $('changelogBody1');
+if (cl1) cl1.innerHTML = $('changelogBody').innerHTML;
+makeChangelogToggle('changelogToggle1', 'changelogBody1', 'changelogArrow1');
 
 async function refreshStatus() {
   try {
