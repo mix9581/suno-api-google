@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Suno Cookie 捕获测试工具</title>
+  <style>
+    body {
+      font-family: 'SF Mono', Monaco, monospace;
+      background: #0a0a0a;
+      color: #e0e0e0;
+      padding: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    h1 { color: #ff7a00; }
+    h2 { color: #00bfff; margin-top: 30px; }
+    .section {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+    .ok { color: #0f0; }
+    .err { color: #f00; }
+    .warn { color: #ff0; }
+    button {
+      background: #ff7a00;
+      color: #fff;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      margin: 5px;
+      font-size: 14px;
+    }
+    button:hover { background: #ff9933; }
+    button:disabled {
+      background: #555;
+      cursor: not-allowed;
+    }
+    pre {
+      background: #000;
+      padding: 15px;
+      border-radius: 5px;
+      overflow-x: auto;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .cookie-item {
+      background: #222;
+      padding: 10px;
+      margin: 5px 0;
+      border-left: 3px solid #ff7a00;
+      border-radius: 3px;
+    }
+    .status {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: bold;
+      margin-left: 10px;
+    }
+    .status.valid { background: #0a0; color: #fff; }
+    .status.expired { background: #a00; color: #fff; }
+    .status.missing { background: #555; color: #fff; }
+    #output { margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>🍪 Suno Cookie 捕获测试工具</h1>
+
+  <div class="section">
+    <h2>使用说明</h2>
+    <ol>
+      <li>确保你已经在 <strong>suno.com</strong> 登录</li>
+      <li>点击下面的测试按钮</li>
+      <li>查看测试结果，找出 Cookie 捕获的问题</li>
+      <li>将结果截图或复制给开发者</li>
+    </ol>
+  </div>
+
+  <div class="section">
+    <h2>快速测试</h2>
+    <button onclick="runAllTests()">🚀 运行所有测试</button>
+    <button onclick="clearOutput()">🗑️ 清空输出</button>
+    <button onclick="copyCookie()">📋 复制完整 Cookie</button>
+  </div>
+
+  <div class="section">
+    <h2>分步测试</h2>
+    <button onclick="test1_DocumentCookie()">测试 1: document.cookie</button>
+    <button onclick="test2_ChromeCookieAPI()">测试 2: Chrome Cookie API</button>
+    <button onclick="test3_NetworkRequest()">测试 3: 触发网络请求</button>
+    <button onclick="test4_ValidateSession()">测试 4: 验证 Session</button>
+    <button onclick="test5_StorageCheck()">测试 5: 检查插件存储</button>
+  </div>
+
+  <div id="output"></div>
+
+  <script>
+    const output = document.getElementById('output');
+    let fullCookieString = '';
+
+    function log(msg, type = 'info') {
+      const div = document.createElement('div');
+      div.style.margin = '5px 0';
+
+      if (type === 'ok') div.className = 'ok';
+      else if (type === 'err') div.className = 'err';
+      else if (type === 'warn') div.className = 'warn';
+
+      div.textContent = msg;
+      output.appendChild(div);
+    }
+
+    function logSection(title) {
+      const h3 = document.createElement('h3');
+      h3.textContent = title;
+      h3.style.color = '#00bfff';
+      h3.style.marginTop = '20px';
+      output.appendChild(h3);
+    }
+
+    function logCookie(name, value, expired = false) {
+      const div = document.createElement('div');
+      div.className = 'cookie-item';
+
+      const status = expired ?
+        '<span class="status expired">已过期</span>' :
+        '<span class="status valid">有效</span>';
+
+      div.innerHTML = `
+        <strong>${name}</strong> ${status}<br>
+        <code style="color:#888;font-size:11px;">${value.substring(0, 80)}${value.length > 80 ? '...' : ''}</code>
+      `;
+      output.appendChild(div);
+    }
+
+    function clearOutput() {
+      output.innerHTML = '';
+    }
+
+    async function runAllTests() {
+      clearOutput();
+      logSection('🔍 开始完整测试');
+
+      await test1_DocumentCookie();
+      await test2_ChromeCookieAPI();
+      await test3_NetworkRequest();
+      await test4_ValidateSession();
+      await test5_StorageCheck();
+
+      logSection('✅ 测试完成');
+    }
+
+    function test1_DocumentCookie() {
+      logSection('📋 测试 1: document.cookie');
+
+      const cookies = document.cookie.split(';').map(c => c.trim());
+      log(`找到 ${cookies.length} 个 Cookie`, 'info');
+
+      const cookieObj = {};
+      cookies.forEach(c => {
+        const idx = c.indexOf('=');
+        if (idx > 0) {
+          const key = c.substring(0, idx);
+          const val = c.substring(idx + 1);
+          cookieObj[key] = val;
+        }
+      });
+
+      let hasSession = false;
+      let hasClient = false;
+
+      Object.keys(cookieObj).forEach(key => {
+        if (key.startsWith('__session') || key.startsWith('__client') || key === 'suno_auth') {
+          logCookie(key, cookieObj[key]);
+          if (key.startsWith('__session')) hasSession = true;
+          if (key.startsWith('__client')) hasClient = true;
+        }
+      });
+
+      if (!hasSession) {
+        log('⚠️ 未找到 __session* Cookie（可能是 HttpOnly）', 'warn');
+      }
+      if (!hasClient) {
+        log('⚠️ 未找到 __client* Cookie', 'warn');
+      }
+
+      fullCookieString = document.cookie;
+
+      return { hasSession, hasClient, cookieObj };
+    }
+
+    async function test2_ChromeCookieAPI() {
+      logSection('📋 测试 2: Chrome Cookie API');
+
+      try {
+        const cookies = await chrome.cookies.getAll({ domain: '.suno.com' });
+        log(`找到 ${cookies.length} 个 Cookie`, 'info');
+
+        const now = Date.now() / 1000;
+        const important = cookies.filter(c =>
+          c.name.startsWith('__session') ||
+          c.name.startsWith('__client') ||
+          c.name.startsWith('__refresh') ||
+          c.name === 'suno_auth'
+        );
+
+        log(`其中 ${important.length} 个是关键 Cookie:`, 'info');
+
+        important.forEach(c => {
+          const expired = c.expirationDate && c.expirationDate < now;
+          logCookie(c.name, c.value, expired);
+
+          if (expired) {
+            log(`  ⚠️ ${c.name} 已过期 (${new Date(c.expirationDate * 1000).toLocaleString()})`, 'warn');
+          }
+        });
+
+        // 生成完整 Cookie 字符串
+        fullCookieString = cookies
+          .filter(c => !c.expirationDate || c.expirationDate > now)
+          .map(c => `${c.name}=${c.value}`)
+          .join('; ');
+
+        log(`✓ 完整 Cookie 长度: ${fullCookieString.length} 字符`, 'ok');
+
+        return { cookies, important };
+      } catch (err) {
+        log(`✗ Chrome Cookie API 失败: ${err.message}`, 'err');
+        return null;
+      }
+    }
+
+    async function test3_NetworkRequest() {
+      logSection('📋 测试 3: 触发网络请求');
+
+      log('正在发送请求到 studio-api.prod.suno.com...', 'info');
+
+      try {
+        const resp = await fetch('https://studio-api.prod.suno.com/api/billing/info/', {
+          credentials: 'include'
+        });
+
+        log(`HTTP 状态: ${resp.status}`, resp.ok ? 'ok' : 'err');
+
+        if (resp.status === 401) {
+          log('✗ Session 已过期，需要重新登录', 'err');
+          return { valid: false };
+        }
+
+        if (resp.ok) {
+          const data = await resp.json();
+          log(`✓ Session 有效`, 'ok');
+          log(`  账户积分: ${data.total_credits_left}`, 'info');
+          log(`  月度限额: ${data.monthly_limit}`, 'info');
+          log(`  已使用: ${data.monthly_usage}`, 'info');
+          return { valid: true, data };
+        }
+
+        return { valid: false };
+      } catch (err) {
+        log(`✗ 请求失败: ${err.message}`, 'err');
+        return { valid: false, error: err.message };
+      }
+    }
+
+    async function test4_ValidateSession() {
+      logSection('📋 测试 4: 验证 Session Token');
+
+      // 从 Cookie 中提取 __session* JWT
+      const cookies = fullCookieString.split(';').map(c => c.trim());
+      const sessionCookies = cookies.filter(c => c.startsWith('__session'));
+
+      if (sessionCookies.length === 0) {
+        log('✗ 未找到 __session* Cookie', 'err');
+        return { valid: false };
+      }
+
+      log(`找到 ${sessionCookies.length} 个 session Cookie`, 'info');
+
+      sessionCookies.forEach(c => {
+        const [key, val] = c.split('=');
+
+        // 解码 JWT payload
+        try {
+          const parts = val.split('.');
+          if (parts.length === 3) {
+            const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+            const exp = payload.exp;
+            const now = Math.floor(Date.now() / 1000);
+            const remaining = exp - now;
+
+            if (remaining > 0) {
+              log(`✓ ${key} 有效，剩余 ${Math.floor(remaining / 60)} 分钟`, 'ok');
+              log(`  过期时间: ${new Date(exp * 1000).toLocaleString()}`, 'info');
+            } else {
+              log(`✗ ${key} 已过期 ${Math.floor(-remaining / 60)} 分钟`, 'err');
+            }
+          }
+        } catch (err) {
+          log(`⚠️ 无法解析 ${key}: ${err.message}`, 'warn');
+        }
+      });
+
+      return { valid: true };
+    }
+
+    async function test5_StorageCheck() {
+      logSection('📋 测试 5: 检查插件存储');
+
+      try {
+        const data = await chrome.storage.local.get(['sunoCookie', 'capturedAt', 'apiKey']);
+
+        if (data.sunoCookie) {
+          log(`✓ 插件已存储 Cookie (长度: ${data.sunoCookie.length})`, 'ok');
+          log(`  捕获时间: ${data.capturedAt || '未知'}`, 'info');
+
+          const hasSession = data.sunoCookie.includes('__session');
+          const hasClient = data.sunoCookie.includes('__client');
+
+          log(`  包含 __session: ${hasSession ? '✓' : '✗'}`, hasSession ? 'ok' : 'err');
+          log(`  包含 __client: ${hasClient ? '✓' : '✗'}`, hasClient ? 'ok' : 'err');
+        } else {
+          log('✗ 插件未存储 Cookie', 'err');
+        }
+
+        if (data.apiKey) {
+          log(`✓ 已保存 API Key: ${data.apiKey.substring(0, 15)}...`, 'ok');
+        } else {
+          log('⚠️ 未保存 API Key', 'warn');
+        }
+
+        return data;
+      } catch (err) {
+        log(`✗ 无法访问插件存储: ${err.message}`, 'err');
+        return null;
+      }
+    }
+
+    async function copyCookie() {
+      if (!fullCookieString) {
+        await test2_ChromeCookieAPI();
+      }
+
+      if (fullCookieString) {
+        try {
+          await navigator.clipboard.writeText(fullCookieString);
+          alert('✅ Cookie 已复制到剪贴板！\n\n长度: ' + fullCookieString.length + ' 字符');
+        } catch (err) {
+          alert('❌ 复制失败: ' + err.message);
+        }
+      } else {
+        alert('❌ 没有可复制的 Cookie');
+      }
+    }
+
+    // 自动运行初始测试
+    window.addEventListener('load', () => {
+      log('页面已加载，准备测试...', 'info');
+      log('请点击「运行所有测试」按钮开始', 'info');
+    });
+  </script>
+</body>
+</html>
