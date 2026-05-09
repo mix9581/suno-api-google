@@ -438,7 +438,6 @@ $('captureCookieBtn').addEventListener('click', async () => {
 
   let validSession = null;
   let maxRemaining = -Infinity;
-  const now = Math.floor(Date.now() / 1000);
 
   for (const cookie of sessionCookies) {
     try {
