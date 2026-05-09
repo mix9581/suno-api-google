@@ -414,13 +414,59 @@ $('captureCookieBtn').addEventListener('click', async () => {
     return;
   }
 
-  const cookieStr = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+  let cookieStr = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
 
   if (!cookieStr.includes('__client=')) {
     showToast('未检测到 suno.com 登录状态，请先打开 suno.com 并登录', 'err');
     btn.textContent = state.cookieValid ? '刷新 Cookie' : '获取 Cookie';
     btn.disabled = false;
     return;
+  }
+
+  // 检查 session token 是否过期或即将过期
+  const sessionCookie = cookies.find(c => c.name === '__session' || c.name.startsWith('__session_'));
+  if (sessionCookie) {
+    try {
+      // 解析 JWT payload
+      const parts = sessionCookie.value.split('.');
+      if (parts.length === 3) {
+        const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+        const payload = JSON.parse(atob(padded));
+        const exp = payload.exp;
+        const now = Math.floor(Date.now() / 1000);
+        const remaining = exp - now;
+
+        // 如果 session 在 5 分钟内过期，尝试刷新
+        if (remaining < 300) {
+          showToast('Session 即将过期，正在自动刷新...', 'warn');
+
+          try {
+            // 触发 Suno API 请求，让浏览器自动刷新 session
+            const resp = await fetch('https://studio-api.prod.suno.com/api/billing/info/', {
+              credentials: 'include'
+            });
+
+            if (resp.ok) {
+              // 重新读取 Cookie（session 应该已被刷新）
+              const newCookies = await chrome.cookies.getAll({ domain: '.suno.com' });
+              cookieStr = newCookies.map((c) => `${c.name}=${c.value}`).join('; ');
+              showToast('✓ Session 已自动刷新', 'ok');
+            } else if (resp.status === 401) {
+              showToast('⚠️ Session 已过期，请在 suno.com 点击任意功能后重试', 'err');
+              btn.textContent = '刷新 Cookie';
+              btn.disabled = false;
+              return;
+            }
+          } catch (refreshErr) {
+            console.warn('自动刷新失败:', refreshErr);
+            showToast('⚠️ 自动刷新失败，Cookie 可能已过期', 'warn');
+          }
+        }
+      }
+    } catch (parseErr) {
+      console.warn('无法解析 session token:', parseErr);
+    }
   }
 
   // 同步存到 chrome.storage.local（供 background.js 参考用）
