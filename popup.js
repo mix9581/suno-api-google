@@ -414,7 +414,16 @@ $('captureCookieBtn').addEventListener('click', async () => {
     return;
   }
 
-  let cookieStr = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+  // 过滤掉已过期的 Cookie，只保留有效的
+  const now = Math.floor(Date.now() / 1000);
+  const validCookies = cookies.filter(c => {
+    // 如果没有过期时间，保留
+    if (!c.expirationDate) return true;
+    // 如果未过期，保留
+    return c.expirationDate > now;
+  });
+
+  let cookieStr = validCookies.map((c) => `${c.name}=${c.value}`).join('; ');
 
   if (!cookieStr.includes('__client=')) {
     showToast('未检测到 suno.com 登录状态，请先打开 suno.com 并登录', 'err');
@@ -424,49 +433,70 @@ $('captureCookieBtn').addEventListener('click', async () => {
   }
 
   // 检查 session token 是否过期或即将过期
-  const sessionCookie = cookies.find(c => c.name === '__session' || c.name.startsWith('__session_'));
-  if (sessionCookie) {
+  // 找到所有 session cookies，过滤掉已过期的，选择剩余时间最长的
+  const sessionCookies = cookies.filter(c => c.name === '__session' || c.name.startsWith('__session_'));
+
+  let validSession = null;
+  let maxRemaining = -Infinity;
+  const now = Math.floor(Date.now() / 1000);
+
+  for (const cookie of sessionCookies) {
     try {
-      // 解析 JWT payload
-      const parts = sessionCookie.value.split('.');
+      const parts = cookie.value.split('.');
       if (parts.length === 3) {
         const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
         const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
         const payload = JSON.parse(atob(padded));
         const exp = payload.exp;
-        const now = Math.floor(Date.now() / 1000);
         const remaining = exp - now;
 
-        // 如果 session 在 5 分钟内过期，尝试刷新
-        if (remaining < 300) {
-          showToast('Session 即将过期，正在自动刷新...', 'warn');
-
-          try {
-            // 触发 Suno API 请求，让浏览器自动刷新 session
-            const resp = await fetch('https://studio-api.prod.suno.com/api/billing/info/', {
-              credentials: 'include'
-            });
-
-            if (resp.ok) {
-              // 重新读取 Cookie（session 应该已被刷新）
-              const newCookies = await chrome.cookies.getAll({ domain: '.suno.com' });
-              cookieStr = newCookies.map((c) => `${c.name}=${c.value}`).join('; ');
-              showToast('✓ Session 已自动刷新', 'ok');
-            } else if (resp.status === 401) {
-              showToast('⚠️ Session 已过期，请在 suno.com 点击任意功能后重试', 'err');
-              btn.textContent = '刷新 Cookie';
-              btn.disabled = false;
-              return;
-            }
-          } catch (refreshErr) {
-            console.warn('自动刷新失败:', refreshErr);
-            showToast('⚠️ 自动刷新失败，Cookie 可能已过期', 'warn');
-          }
+        // 只考虑未过期的 session
+        if (remaining > 0 && remaining > maxRemaining) {
+          maxRemaining = remaining;
+          validSession = { cookie, exp, remaining };
         }
       }
     } catch (parseErr) {
-      console.warn('无法解析 session token:', parseErr);
+      console.warn(`无法解析 ${cookie.name}:`, parseErr);
     }
+  }
+
+  // 如果找到有效的 session，检查是否需要刷新
+  if (validSession) {
+    const { remaining } = validSession;
+
+    // 如果 session 在 5 分钟内过期，尝试刷新
+    if (remaining < 300) {
+      showToast(`Session 剩余 ${Math.floor(remaining / 60)} 分钟，正在自动刷新...`, 'warn');
+
+      try {
+        // 触发 Suno API 请求，让浏览器自动刷新 session
+        const resp = await fetch('https://studio-api.prod.suno.com/api/billing/info/', {
+          credentials: 'include'
+        });
+
+        if (resp.ok) {
+          // 重新读取 Cookie（session 应该已被刷新）
+          const newCookies = await chrome.cookies.getAll({ domain: '.suno.com' });
+          cookieStr = newCookies.map((c) => `${c.name}=${c.value}`).join('; ');
+          showToast('✓ Session 已自动刷新', 'ok');
+        } else if (resp.status === 401) {
+          showToast('⚠️ Session 已过期，请在 suno.com 点击任意功能后重试', 'err');
+          btn.textContent = '刷新 Cookie';
+          btn.disabled = false;
+          return;
+        }
+      } catch (refreshErr) {
+        console.warn('自动刷新失败:', refreshErr);
+        showToast('⚠️ 自动刷新失败，Cookie 可能已过期', 'warn');
+      }
+    } else {
+      // Session 有效且时间充足
+      console.log(`Session 有效，剩余 ${Math.floor(remaining / 60)} 分钟`);
+    }
+  } else {
+    // 没有找到有效的 session
+    showToast('⚠️ 未找到有效的 Session，请在 suno.com 刷新页面后重试', 'warn');
   }
 
   // 同步存到 chrome.storage.local（供 background.js 参考用）
