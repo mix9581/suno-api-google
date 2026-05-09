@@ -30,7 +30,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["cookie-test.html", "debug.html"],
+      "resources": ["cookie-test.html", "cookie-test.css", "cookie-test.js", "debug.html", "test-cookie.js"],
       "matches": ["<all_urls>"]
     }
   ]
