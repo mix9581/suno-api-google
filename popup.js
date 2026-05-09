@@ -441,7 +441,8 @@ $('captureCookieBtn').addEventListener('click', async () => {
         state.sunoCredits = null;
         renderDashboard();
         const errMsg = result.cookie_error || '服务器无法验证 Suno 账号';
-        showToast('Cookie 已保存，但验证失败: ' + errMsg, 'err');
+        showToast('⚠️ ' + errMsg, 'err');
+        console.error('Cookie 验证失败详情:', result);
       }
     } else {
       showToast('Cookie 绑定失败: ' + (result.error || '未知错误'), 'err');
