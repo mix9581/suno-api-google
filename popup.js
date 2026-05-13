@@ -52,9 +52,17 @@ function withConfirm(btn, originalLabel, action) {
 // ======== Scene Navigation ========
 function showScene(sceneId) {
   document.querySelectorAll('.scene').forEach((el) => el.classList.remove('active'));
-  $(sceneId).classList.add('active');
+  const scene = $(sceneId);
+  scene.classList.add('active');
   state.scene = sceneId;
-  window.scrollTo(0, 0);
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+  window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  requestAnimationFrame(() => {
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    scene.scrollIntoView({ block: 'start' });
+  });
 }
 
 // ======== Toast ========
@@ -93,6 +101,7 @@ async function api(method, path, body = null) {
   const url = `${state.apiUrl.replace(/\/+$/, '')}${path}`;
   const headers = {
     'X-API-Key': state.apiKey,
+    'X-Cookie-Scope': 'browser',
     'ngrok-skip-browser-warning': '1',
   };
 
@@ -718,6 +727,7 @@ async function handleUpload(file) {
       headers: {
         'X-API-Key': state.apiKey,
         'X-Suno-Cookie': sunoCookie,
+        'X-Cookie-Scope': 'browser',
         'ngrok-skip-browser-warning': '1'
       },
       body: formData,
@@ -1106,7 +1116,7 @@ function renderStyleCards() {
           <label class="form-label" style="margin-bottom:0;color:#ff7a00;">风格标签</label>
           <button type="button" class="clear-style-tags btn-ghost" data-idx="${i}" style="background:none;border:none;color:#555;font-size:10px;cursor:pointer;padding:0 2px;">清空</button>
         </div>
-        <input class="form-input style-tags" data-idx="${i}" type="text" placeholder="jazz, smooth, female vocals" value="${escapeHtml(card.tags)}" />
+        <input class="form-input style-tags" data-idx="${i}" type="text" placeholder="jazz, smooth, female vocals" value="${escapeAttr(card.tags)}" />
       </div>
       <div class="form-group">
         <label class="form-label" style="color:#ff7a00;">使用预设</label>
@@ -1120,7 +1130,7 @@ function renderStyleCards() {
       <div class="collapsible-body" data-adv-body="${i}">
         <div class="form-group">
           <label class="form-label">排除风格</label>
-          <input class="form-input style-neg-tags" data-idx="${i}" type="text" placeholder="rap, screamo" value="${escapeHtml(card.negative_tags)}" />
+          <input class="form-input style-neg-tags" data-idx="${i}" type="text" placeholder="rap, screamo" value="${escapeAttr(card.negative_tags)}" />
         </div>
         <div class="form-group">
           <label class="form-label">人声性别</label>
@@ -1866,8 +1876,12 @@ function stopAutoRefresh() {
 // ======== Utilities ========
 function escapeHtml(str) {
   const div = document.createElement('div');
-  div.textContent = str;
+  div.textContent = str || '';
   return div.innerHTML;
+}
+
+function escapeAttr(str) {
+  return escapeHtml(str).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function downloadJson(data, filename) {
