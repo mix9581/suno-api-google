@@ -53,11 +53,15 @@ function withConfirm(btn, originalLabel, action) {
 function showScene(sceneId) {
   document.querySelectorAll('.scene').forEach((el) => el.classList.remove('active'));
   const scene = $(sceneId);
+  if (!scene) {
+    showToast(`页面缺少 ${sceneId}`, 'err');
+    return;
+  }
   scene.classList.add('active');
   state.scene = sceneId;
   document.documentElement.scrollTop = 0;
   document.body.scrollTop = 0;
-  window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   requestAnimationFrame(() => {
     document.documentElement.scrollTop = 0;
     document.body.scrollTop = 0;
@@ -76,7 +80,21 @@ function showToast(msg, type = 'ok') {
   setTimeout(() => toast.remove(), 2500);
 }
 
+window.addEventListener('error', (event) => {
+  showToast(`脚本错误: ${event.message}`, 'err');
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason?.message || event.reason || '未知错误';
+  showToast(`请求错误: ${reason}`, 'err');
+});
+
 // ======== API Helper ========
+function hasSunoAuthCookieValue(cookieValue) {
+  return /(?:^|;\s*)__client(?:_[^=;]+)?=/.test(cookieValue || '') ||
+    /(?:^|;\s*)__session(?:_[^=;]+)?=/.test(cookieValue || '');
+}
+
 function compactSunoCookie(cookieValue) {
   const keep = new Set(['suno_auth', 'ajs_anonymous_id', 'suno_device_id']);
   return (cookieValue || '')
@@ -97,6 +115,11 @@ function compactSunoCookie(cookieValue) {
     .join('; ');
 }
 
+async function getStoredSunoCookie() {
+  const stored = await chrome.storage.local.get(['lastSunoRequestCookie', 'sunoCookie']);
+  return compactSunoCookie(stored.lastSunoRequestCookie || stored.sunoCookie);
+}
+
 async function api(method, path, body = null) {
   const url = `${state.apiUrl.replace(/\/+$/, '')}${path}`;
   const headers = {
@@ -105,8 +128,7 @@ async function api(method, path, body = null) {
     'ngrok-skip-browser-warning': '1',
   };
 
-  const stored = await chrome.storage.local.get(['sunoCookie']);
-  const sunoCookie = compactSunoCookie(stored.sunoCookie);
+  const sunoCookie = await getStoredSunoCookie();
   if (sunoCookie) {
     headers['X-Suno-Cookie'] = sunoCookie;
   }
@@ -169,7 +191,7 @@ async function doLogin() {
 
     // 清除所有旧数据，确保切换账号后完全隔离
     await chrome.storage.local.remove([
-      'sunoCookie', 'capturedAt',
+      'sunoCookie', 'lastSunoRequestCookie', 'lastSunoRequestAt', 'capturedAt',
       'lastCookieFingerprint', 'cookiePushStatus', 'cookiePushTime',
       'uploadHistory', 'hiddenTaskIds',
     ]);
@@ -251,7 +273,7 @@ async function doEmailLogin() {
     if (!resp.ok) { errMsg.textContent = data.error || '登录失败'; errEl.style.display = 'flex'; return; }
 
     await chrome.storage.local.remove([
-      'sunoCookie', 'capturedAt',
+      'sunoCookie', 'lastSunoRequestCookie', 'lastSunoRequestAt', 'capturedAt',
       'lastCookieFingerprint', 'cookiePushStatus', 'cookiePushTime',
       'uploadHistory', 'hiddenTaskIds',
     ]);
@@ -436,6 +458,14 @@ $('captureCookieBtn').addEventListener('click', async () => {
   // 等待页面加载完成，Clerk JS 完成 session 刷新
   await new Promise((r) => setTimeout(r, 4000));
 
+  // 主动触发一次 Suno API 请求，让 background.js 捕获当前浏览器实际发出的 Cookie header。
+  try {
+    await fetch('https://studio-api.prod.suno.com/api/billing/info/', { credentials: 'include' });
+  } catch (refreshErr) {
+    console.warn('触发 Suno 请求失败，继续使用 cookie store 回退:', refreshErr);
+  }
+  await new Promise((r) => setTimeout(r, 500));
+
   // 从浏览器 cookie 存储直接读取，避免多 tab 被动抓取的干扰
   const cookies = await chrome.cookies.getAll({ domain: '.suno.com' });
 
@@ -461,7 +491,10 @@ $('captureCookieBtn').addEventListener('click', async () => {
     return c.expirationDate > now;
   });
 
-  let cookieStr = validCookies.map((c) => `${c.name}=${c.value}`).join('; ');
+  const latestStoredCookie = await getStoredSunoCookie();
+  let cookieStr = hasSunoAuthCookieValue(latestStoredCookie)
+    ? latestStoredCookie
+    : validCookies.map((c) => `${c.name}=${c.value}`).join('; ');
 
   const hasValidAuthCookie = validCookies.some((c) =>
     c.name === '__client' ||
@@ -526,7 +559,10 @@ $('captureCookieBtn').addEventListener('click', async () => {
             if (!c.expirationDate) return true;
             return c.expirationDate > now;
           });
-          cookieStr = validNewCookies.map((c) => `${c.name}=${c.value}`).join('; ');
+          const refreshedStoredCookie = await getStoredSunoCookie();
+          cookieStr = hasSunoAuthCookieValue(refreshedStoredCookie)
+            ? refreshedStoredCookie
+            : validNewCookies.map((c) => `${c.name}=${c.value}`).join('; ');
           showToast('✓ Session 已自动刷新', 'ok');
         } else if (resp.status === 401) {
           showToast('⚠️ Session 已过期，请在 suno.com 点击任意功能后重试', 'err');
@@ -548,7 +584,12 @@ $('captureCookieBtn').addEventListener('click', async () => {
   }
 
   // 同步存到 chrome.storage.local（供 background.js 参考用）
-  await chrome.storage.local.set({ sunoCookie: cookieStr, capturedAt: new Date().toISOString() });
+  await chrome.storage.local.set({
+    sunoCookie: cookieStr,
+    lastSunoRequestCookie: cookieStr,
+    lastSunoRequestAt: new Date().toISOString(),
+    capturedAt: new Date().toISOString(),
+  });
 
   try {
     const result = await api('POST', '/api/auth/bind_cookie', { cookie: cookieStr });
@@ -720,8 +761,7 @@ async function handleUpload(file) {
     formData.append('file', file);
 
     const url = `${state.apiUrl.replace(/\/+$/, '')}/api/upload_audio`;
-    const stored = await chrome.storage.local.get(['sunoCookie']);
-    const sunoCookie = compactSunoCookie(stored.sunoCookie);
+    const sunoCookie = await getStoredSunoCookie();
     const resp = await fetch(url, {
       method: 'POST',
       headers: {
@@ -896,11 +936,9 @@ $('parseLinkBtn').addEventListener('click', async () => {
     $('sunoShareLink').value = '';
     showToast(`已解析: ${title}`);
 
-    // 显示歌曲详细信息
+    // 先进入 Scene3，再渲染歌曲信息，避免隐藏场景里的节点状态影响后续按钮显示。
+    await enterScene3(clipId, title, info);
     displaySongInfo(info);
-
-    // 进入 Scene3 并自动填充信息
-    enterScene3(clipId, title, info);
   } catch (e) {
     showToast('解析失败: ' + e.message, 'err');
   } finally {
@@ -913,6 +951,7 @@ $('parseLinkBtn').addEventListener('click', async () => {
 function displaySongInfo(info) {
   const section = $('songInfoSection');
   const content = $('songInfoContent');
+  if (!section || !content) return;
 
   if (!info) {
     section.style.display = 'none';
@@ -921,14 +960,16 @@ function displaySongInfo(info) {
 
   // 构建信息 HTML
   let html = '';
+  const safe = (value, fallback = '未知') => escapeHtml(value || fallback);
+  const safeUrl = (value) => escapeAttr(value || '');
 
   // 基本信息
   html += `<div style="margin-bottom:12px;">`;
   html += `<strong style="color:#ff7a00;">基本信息</strong><br>`;
-  html += `<span style="color:#888;">歌曲名:</span> ${info.title || '未知'}<br>`;
-  html += `<span style="color:#888;">状态:</span> ${info.status || '未知'}<br>`;
+  html += `<span style="color:#888;">歌曲名:</span> ${safe(info.title)}<br>`;
+  html += `<span style="color:#888;">状态:</span> ${safe(info.status)}<br>`;
   html += `<span style="color:#888;">时长:</span> ${info.duration ? Math.floor(info.duration) + 's' : '未知'}<br>`;
-  html += `<span style="color:#888;">模型:</span> ${info.model_name || '未知'}<br>`;
+  html += `<span style="color:#888;">模型:</span> ${safe(info.model_name)}<br>`;
   html += `<span style="color:#888;">创建时间:</span> ${info.created_at ? new Date(info.created_at).toLocaleString('zh-CN') : '未知'}<br>`;
   html += `</div>`;
 
@@ -984,7 +1025,7 @@ function displaySongInfo(info) {
     html += `<strong style="color:#ff7a00;">翻唱信息</strong><br>`;
     html += `<span style="color:#0f0;">✓ 这是一首翻唱歌曲</span><br>`;
     if (info.cover_clip_id) {
-      html += `<span style="color:#888;">原曲 ID:</span> <code style="font-size:10px;">${info.cover_clip_id}</code><br>`;
+      html += `<span style="color:#888;">原曲 ID:</span> <code style="font-size:10px;">${safe(info.cover_clip_id, '')}</code><br>`;
     }
     html += `</div>`;
   }
@@ -994,10 +1035,10 @@ function displaySongInfo(info) {
     html += `<div style="margin-bottom:12px;">`;
     html += `<strong style="color:#ff7a00;">媒体链接</strong><br>`;
     if (info.audio_url) {
-      html += `<a href="${info.audio_url}" target="_blank" style="color:#00bfff; font-size:11px;">🎵 音频链接</a><br>`;
+      html += `<a href="${safeUrl(info.audio_url)}" target="_blank" style="color:#00bfff; font-size:11px;">音频链接</a><br>`;
     }
     if (info.video_url) {
-      html += `<a href="${info.video_url}" target="_blank" style="color:#00bfff; font-size:11px;">🎬 视频链接</a><br>`;
+      html += `<a href="${safeUrl(info.video_url)}" target="_blank" style="color:#00bfff; font-size:11px;">视频链接</a><br>`;
     }
     html += `</div>`;
   }
@@ -1007,7 +1048,8 @@ function displaySongInfo(info) {
 
   // 默认展开
   $('songInfoBody').style.display = 'block';
-  $('toggleSongInfo').querySelector('.arrow').textContent = '▼';
+  const infoArrow = $('toggleSongInfo')?.querySelector('.arrow');
+  if (infoArrow) infoArrow.textContent = '▼';
 }
 
 // Toggle song info

@@ -67,7 +67,8 @@ async function pushCookieIfLoggedIn(cookieValue, fingerprint) {
   }
 }
 
-// 监听 Suno/Clerk 请求，合并 __client/__session 及其 suffixed cookie。
+// 监听 Suno/Clerk 请求。优先保存浏览器实际发给 Suno 的 Cookie header，
+// 这比从 cookie store 合并更能代表当前浏览器正在登录的 Suno 账号。
 chrome.webRequest.onSendHeaders.addListener(
   async (details) => {
     const cookieHeader = details.requestHeaders?.find(
@@ -76,22 +77,25 @@ chrome.webRequest.onSendHeaders.addListener(
 
     if (!hasSunoAuthCookie(cookieHeader?.value)) return;
 
+    const requestCookie = cookieHeader.value;
     const stored = await chrome.storage.local.get(['sunoCookie']);
     const merged = parseCookieString(stored.sunoCookie || '');
-    const incoming = parseCookieString(cookieHeader.value);
+    const incoming = parseCookieString(requestCookie);
     for (const [key, value] of incoming) merged.set(key, value);
 
     const mergedCookie = serializeCookieMap(merged);
-    const fingerprint = cookieFingerprint(mergedCookie);
+    const fingerprint = cookieFingerprint(requestCookie);
     if (fingerprint && fingerprint === lastPushedCookieHash) return;
     lastPushedCookieHash = fingerprint;
 
     await chrome.storage.local.set({
+      lastSunoRequestCookie: requestCookie,
+      lastSunoRequestAt: new Date().toISOString(),
       sunoCookie: mergedCookie,
       capturedAt: new Date().toISOString(),
     });
 
-    await pushCookieIfLoggedIn(mergedCookie, fingerprint);
+    await pushCookieIfLoggedIn(requestCookie, fingerprint);
   },
   {
     urls: [
