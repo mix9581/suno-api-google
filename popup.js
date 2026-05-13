@@ -434,7 +434,7 @@ $('captureCookieBtn').addEventListener('click', async () => {
 
   // 检查 session token 是否过期或即将过期
   // 找到所有 session cookies，过滤掉已过期的，选择剩余时间最长的
-  const sessionCookies = cookies.filter(c => c.name === '__session' || c.name.startsWith('__session_'));
+  const sessionCookies = validCookies.filter(c => c.name === '__session' || c.name.startsWith('__session_'));
 
   let validSession = null;
   let maxRemaining = -Infinity;
@@ -477,7 +477,12 @@ $('captureCookieBtn').addEventListener('click', async () => {
         if (resp.ok) {
           // 重新读取 Cookie（session 应该已被刷新）
           const newCookies = await chrome.cookies.getAll({ domain: '.suno.com' });
-          cookieStr = newCookies.map((c) => `${c.name}=${c.value}`).join('; ');
+          // 过滤掉已过期的 Cookie
+          const validNewCookies = newCookies.filter(c => {
+            if (!c.expirationDate) return true;
+            return c.expirationDate > now;
+          });
+          cookieStr = validNewCookies.map((c) => `${c.name}=${c.value}`).join('; ');
           showToast('✓ Session 已自动刷新', 'ok');
         } else if (resp.status === 401) {
           showToast('⚠️ Session 已过期，请在 suno.com 点击任意功能后重试', 'err');
