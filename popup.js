@@ -402,9 +402,7 @@ $('captureCookieBtn').addEventListener('click', async () => {
   await new Promise((r) => setTimeout(r, 4000));
 
   // 从浏览器 cookie 存储直接读取，避免多 tab 被动抓取的干扰
-  const cookies = await new Promise((resolve) => {
-    chrome.cookies.getAll({ domain: 'suno.com' }, resolve);
-  });
+  const cookies = await chrome.cookies.getAll({ domain: '.suno.com' });
 
   const hasClient = cookies.some((c) => c.name === '__client');
   if (!hasClient) {
