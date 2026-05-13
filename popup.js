@@ -120,6 +120,18 @@ async function getStoredSunoCookie() {
   return compactSunoCookie(stored.lastSunoRequestCookie || stored.sunoCookie);
 }
 
+async function waitForFreshSunoRequestCookie(sinceMs, timeoutMs = 2500) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const stored = await chrome.storage.local.get(['lastSunoRequestCookie', 'lastSunoRequestAt']);
+    const capturedAt = stored.lastSunoRequestAt ? Date.parse(stored.lastSunoRequestAt) : 0;
+    const cookie = compactSunoCookie(stored.lastSunoRequestCookie);
+    if (cookie && capturedAt >= sinceMs) return cookie;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  return '';
+}
+
 async function api(method, path, body = null) {
   const url = `${state.apiUrl.replace(/\/+$/, '')}${path}`;
   const headers = {
@@ -441,6 +453,8 @@ $('captureCookieBtn').addEventListener('click', async () => {
   const btn = $('captureCookieBtn');
   btn.textContent = '读取中...';
   btn.disabled = true;
+  const captureStartedAt = Date.now();
+  await chrome.storage.local.remove(['lastSunoRequestCookie', 'lastSunoRequestAt']);
 
   // 先刷新 suno.com 让 Clerk 重新签发 token，再读 cookie
   // 这与旧行为一致：reload 触发 Clerk JS 刷新会话，确保 __client 是最新的
@@ -459,12 +473,19 @@ $('captureCookieBtn').addEventListener('click', async () => {
   await new Promise((r) => setTimeout(r, 4000));
 
   // 主动触发一次 Suno API 请求，让 background.js 捕获当前浏览器实际发出的 Cookie header。
+  let billingResp = null;
   try {
-    await fetch('https://studio-api.prod.suno.com/api/billing/info/', { credentials: 'include' });
+    billingResp = await fetch('https://studio-api.prod.suno.com/api/billing/info/', { credentials: 'include' });
   } catch (refreshErr) {
     console.warn('触发 Suno 请求失败，继续使用 cookie store 回退:', refreshErr);
   }
-  await new Promise((r) => setTimeout(r, 500));
+  const freshRequestCookie = await waitForFreshSunoRequestCookie(captureStartedAt);
+  if (billingResp && (billingResp.status === 401 || billingResp.status === 403)) {
+    showToast('⚠️ Suno 登录态已失效，请在 suno.com 刷新并确认已登录', 'err');
+    btn.textContent = state.cookieValid ? '刷新 Cookie' : '获取 Cookie';
+    btn.disabled = false;
+    return;
+  }
 
   // 从浏览器 cookie 存储直接读取，避免多 tab 被动抓取的干扰
   const cookies = await chrome.cookies.getAll({ domain: '.suno.com' });
@@ -491,9 +512,8 @@ $('captureCookieBtn').addEventListener('click', async () => {
     return c.expirationDate > now;
   });
 
-  const latestStoredCookie = await getStoredSunoCookie();
-  let cookieStr = hasSunoAuthCookieValue(latestStoredCookie)
-    ? latestStoredCookie
+  let cookieStr = hasSunoAuthCookieValue(freshRequestCookie)
+    ? freshRequestCookie
     : validCookies.map((c) => `${c.name}=${c.value}`).join('; ');
 
   const hasValidAuthCookie = validCookies.some((c) =>
@@ -559,7 +579,7 @@ $('captureCookieBtn').addEventListener('click', async () => {
             if (!c.expirationDate) return true;
             return c.expirationDate > now;
           });
-          const refreshedStoredCookie = await getStoredSunoCookie();
+          const refreshedStoredCookie = await waitForFreshSunoRequestCookie(captureStartedAt) || await getStoredSunoCookie();
           cookieStr = hasSunoAuthCookieValue(refreshedStoredCookie)
             ? refreshedStoredCookie
             : validNewCookies.map((c) => `${c.name}=${c.value}`).join('; ');
