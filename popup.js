@@ -69,12 +69,38 @@ function showToast(msg, type = 'ok') {
 }
 
 // ======== API Helper ========
+function compactSunoCookie(cookieValue) {
+  const keep = new Set(['suno_auth', 'ajs_anonymous_id', 'suno_device_id']);
+  return (cookieValue || '')
+    .split(';')
+    .map((part) => part.trim())
+    .filter((part) => {
+      const eq = part.indexOf('=');
+      if (eq <= 0) return false;
+      const key = part.slice(0, eq);
+      return key === '__client' ||
+        key.startsWith('__client_') ||
+        key === '__session' ||
+        key.startsWith('__session_') ||
+        key === '__refresh' ||
+        key.startsWith('__refresh_') ||
+        keep.has(key);
+    })
+    .join('; ');
+}
+
 async function api(method, path, body = null) {
   const url = `${state.apiUrl.replace(/\/+$/, '')}${path}`;
   const headers = {
     'X-API-Key': state.apiKey,
     'ngrok-skip-browser-warning': '1',
   };
+
+  const stored = await chrome.storage.local.get(['sunoCookie']);
+  const sunoCookie = compactSunoCookie(stored.sunoCookie);
+  if (sunoCookie) {
+    headers['X-Suno-Cookie'] = sunoCookie;
+  }
 
   const opts = { method, headers };
   if (body) {
@@ -404,8 +430,13 @@ $('captureCookieBtn').addEventListener('click', async () => {
   // 从浏览器 cookie 存储直接读取，避免多 tab 被动抓取的干扰
   const cookies = await chrome.cookies.getAll({ domain: '.suno.com' });
 
-  const hasClient = cookies.some((c) => c.name === '__client');
-  if (!hasClient) {
+  const hasAuthCookie = cookies.some((c) =>
+    c.name === '__client' ||
+    c.name.startsWith('__client_') ||
+    c.name === '__session' ||
+    c.name.startsWith('__session_')
+  );
+  if (!hasAuthCookie) {
     showToast('未检测到 suno.com 登录状态，请先打开 suno.com 并登录', 'err');
     btn.textContent = state.cookieValid ? '刷新 Cookie' : '获取 Cookie';
     btn.disabled = false;
@@ -423,7 +454,13 @@ $('captureCookieBtn').addEventListener('click', async () => {
 
   let cookieStr = validCookies.map((c) => `${c.name}=${c.value}`).join('; ');
 
-  if (!cookieStr.includes('__client=')) {
+  const hasValidAuthCookie = validCookies.some((c) =>
+    c.name === '__client' ||
+    c.name.startsWith('__client_') ||
+    c.name === '__session' ||
+    c.name.startsWith('__session_')
+  );
+  if (!hasValidAuthCookie) {
     showToast('未检测到 suno.com 登录状态，请先打开 suno.com 并登录', 'err');
     btn.textContent = state.cookieValid ? '刷新 Cookie' : '获取 Cookie';
     btn.disabled = false;
@@ -674,9 +711,15 @@ async function handleUpload(file) {
     formData.append('file', file);
 
     const url = `${state.apiUrl.replace(/\/+$/, '')}/api/upload_audio`;
+    const stored = await chrome.storage.local.get(['sunoCookie']);
+    const sunoCookie = compactSunoCookie(stored.sunoCookie);
     const resp = await fetch(url, {
       method: 'POST',
-      headers: { 'X-API-Key': state.apiKey, 'ngrok-skip-browser-warning': '1' },
+      headers: {
+        'X-API-Key': state.apiKey,
+        'X-Suno-Cookie': sunoCookie,
+        'ngrok-skip-browser-warning': '1'
+      },
       body: formData,
     });
     const data = await resp.json();
@@ -989,16 +1032,23 @@ async function enterScene3(clipId, fileName, parsedInfo = null) {
     }
 
     // 填充风格参数
+    const pct = (value, fallback) => {
+      if (value === null || value === undefined || value === '') return fallback;
+      const num = Number(value);
+      if (!Number.isFinite(num)) return fallback;
+      return num <= 1 ? Math.round(num * 100) : Math.round(num);
+    };
+
     if (parsedInfo.tags || parsedInfo.vocal_gender || parsedInfo.negative_tags ||
-        parsedInfo.weirdness !== null || parsedInfo.style_weight !== null || parsedInfo.audio_weight !== null) {
+        parsedInfo.weirdness != null || parsedInfo.style_weight != null || parsedInfo.audio_weight != null) {
 
       styleCards[0] = {
         tags: parsedInfo.tags || '',
         vocal_gender: parsedInfo.vocal_gender || '',
         negative_tags: parsedInfo.negative_tags || '',
-        weirdness: parsedInfo.weirdness !== null ? parsedInfo.weirdness : 50,
-        style_weight: parsedInfo.style_weight !== null ? parsedInfo.style_weight : 50,
-        audio_weight: parsedInfo.audio_weight !== null ? parsedInfo.audio_weight : 25,
+        weirdness: pct(parsedInfo.weirdness, 50),
+        style_weight: pct(parsedInfo.style_weight, 50),
+        audio_weight: pct(parsedInfo.audio_weight, 25),
       };
       renderStyleCards();
       showToast('已自动填入歌词和风格参数');
