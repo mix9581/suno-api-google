@@ -354,6 +354,16 @@
       <span id="audioInfo">audio.mp3 | clip_id: ---</span>
     </div>
 
+    <!-- 歌曲详细信息（可折叠） -->
+    <div id="songInfoSection" style="display:none; margin-bottom:16px;">
+      <button id="toggleSongInfo" class="collapsible-toggle" style="width:100%; text-align:left; margin-bottom:8px;">
+        <span class="arrow">&#x25B6;</span> 歌曲详细信息
+      </button>
+      <div id="songInfoBody" class="collapsible-body" style="display:none; background:#1a1a1a; padding:12px; border-radius:6px; font-size:12px; line-height:1.6;">
+        <div id="songInfoContent"></div>
+      </div>
+    </div>
+
     <!-- 歌词 -->
     <div class="form-group">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">

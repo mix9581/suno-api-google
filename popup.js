@@ -839,7 +839,12 @@ $('parseLinkBtn').addEventListener('click', async () => {
     renderUploadHistory();
     $('sunoShareLink').value = '';
     showToast(`已解析: ${title}`);
-    enterScene3(clipId, title);
+
+    // 显示歌曲详细信息
+    displaySongInfo(info);
+
+    // 进入 Scene3 并自动填充信息
+    enterScene3(clipId, title, info);
   } catch (e) {
     showToast('解析失败: ' + e.message, 'err');
   } finally {
@@ -848,8 +853,124 @@ $('parseLinkBtn').addEventListener('click', async () => {
   }
 });
 
+// ======== Display Song Info ========
+function displaySongInfo(info) {
+  const section = $('songInfoSection');
+  const content = $('songInfoContent');
+
+  if (!info) {
+    section.style.display = 'none';
+    return;
+  }
+
+  // 构建信息 HTML
+  let html = '';
+
+  // 基本信息
+  html += `<div style="margin-bottom:12px;">`;
+  html += `<strong style="color:#ff7a00;">基本信息</strong><br>`;
+  html += `<span style="color:#888;">歌曲名:</span> ${info.title || '未知'}<br>`;
+  html += `<span style="color:#888;">状态:</span> ${info.status || '未知'}<br>`;
+  html += `<span style="color:#888;">时长:</span> ${info.duration ? Math.floor(info.duration) + 's' : '未知'}<br>`;
+  html += `<span style="color:#888;">模型:</span> ${info.model_name || '未知'}<br>`;
+  html += `<span style="color:#888;">创建时间:</span> ${info.created_at ? new Date(info.created_at).toLocaleString('zh-CN') : '未知'}<br>`;
+  html += `</div>`;
+
+  // 歌词
+  if (info.lyrics) {
+    html += `<div style="margin-bottom:12px;">`;
+    html += `<strong style="color:#ff7a00;">歌词</strong><br>`;
+    html += `<pre style="white-space:pre-wrap; color:#aaa; font-size:11px; margin-top:4px;">${escapeHtml(info.lyrics)}</pre>`;
+    html += `</div>`;
+  }
+
+  // 音乐风格
+  if (info.tags) {
+    html += `<div style="margin-bottom:12px;">`;
+    html += `<strong style="color:#ff7a00;">音乐风格</strong><br>`;
+    html += `<span style="color:#aaa;">${escapeHtml(info.tags)}</span>`;
+    html += `</div>`;
+  }
+
+  // 排除风格
+  if (info.negative_tags) {
+    html += `<div style="margin-bottom:12px;">`;
+    html += `<strong style="color:#ff7a00;">排除风格</strong><br>`;
+    html += `<span style="color:#aaa;">${escapeHtml(info.negative_tags)}</span>`;
+    html += `</div>`;
+  }
+
+  // 高级参数
+  const hasAdvanced = info.style_weight !== null || info.audio_weight !== null ||
+                      info.weirdness !== null || info.vocal_gender;
+
+  if (hasAdvanced) {
+    html += `<div style="margin-bottom:12px;">`;
+    html += `<strong style="color:#ff7a00;">高级参数</strong><br>`;
+    if (info.vocal_gender) {
+      html += `<span style="color:#888;">人声性别:</span> ${info.vocal_gender === 'male' ? '男声' : info.vocal_gender === 'female' ? '女声' : '自动'}<br>`;
+    }
+    if (info.weirdness !== null) {
+      html += `<span style="color:#888;">怪异度:</span> ${info.weirdness}<br>`;
+    }
+    if (info.style_weight !== null) {
+      html += `<span style="color:#888;">风格权重:</span> ${info.style_weight}<br>`;
+    }
+    if (info.audio_weight !== null) {
+      html += `<span style="color:#888;">音频权重:</span> ${info.audio_weight}<br>`;
+    }
+    html += `</div>`;
+  }
+
+  // Cover/Extend 信息
+  if (info.is_cover) {
+    html += `<div style="margin-bottom:12px;">`;
+    html += `<strong style="color:#ff7a00;">翻唱信息</strong><br>`;
+    html += `<span style="color:#0f0;">✓ 这是一首翻唱歌曲</span><br>`;
+    if (info.cover_clip_id) {
+      html += `<span style="color:#888;">原曲 ID:</span> <code style="font-size:10px;">${info.cover_clip_id}</code><br>`;
+    }
+    html += `</div>`;
+  }
+
+  // 音频/视频链接
+  if (info.audio_url || info.video_url) {
+    html += `<div style="margin-bottom:12px;">`;
+    html += `<strong style="color:#ff7a00;">媒体链接</strong><br>`;
+    if (info.audio_url) {
+      html += `<a href="${info.audio_url}" target="_blank" style="color:#00bfff; font-size:11px;">🎵 音频链接</a><br>`;
+    }
+    if (info.video_url) {
+      html += `<a href="${info.video_url}" target="_blank" style="color:#00bfff; font-size:11px;">🎬 视频链接</a><br>`;
+    }
+    html += `</div>`;
+  }
+
+  content.innerHTML = html;
+  section.style.display = 'block';
+
+  // 默认展开
+  $('songInfoBody').style.display = 'block';
+  $('toggleSongInfo').querySelector('.arrow').textContent = '▼';
+}
+
+// Toggle song info
+document.addEventListener('DOMContentLoaded', () => {
+  $('toggleSongInfo')?.addEventListener('click', () => {
+    const body = $('songInfoBody');
+    const arrow = $('toggleSongInfo').querySelector('.arrow');
+    if (body.style.display === 'none') {
+      body.style.display = 'block';
+      arrow.textContent = '▼';
+    } else {
+      body.style.display = 'none';
+      arrow.textContent = '▶';
+    }
+  });
+});
+
 // ======== Scene 3: Cover Config (scaffold) ========
-async function enterScene3(clipId, fileName) {
+async function enterScene3(clipId, fileName, parsedInfo = null) {
   state.uploadedClipId = clipId;
   state.uploadedFileName = fileName;
   $('audioInfo').textContent = `${fileName} | clip_id: ${clipId}`;
@@ -857,7 +978,34 @@ async function enterScene3(clipId, fileName) {
   $('lyricsInput').value = '';
   showScene('scene3');
 
-  // 自动获取原曲歌词
+  // 如果有解析信息，直接使用
+  if (parsedInfo) {
+    // 填充歌词
+    if (parsedInfo.lyrics) {
+      $('lyricsInput').value = parsedInfo.lyrics;
+    }
+
+    // 填充风格参数
+    if (parsedInfo.tags || parsedInfo.vocal_gender || parsedInfo.negative_tags ||
+        parsedInfo.weirdness !== null || parsedInfo.style_weight !== null || parsedInfo.audio_weight !== null) {
+
+      styleCards[0] = {
+        tags: parsedInfo.tags || '',
+        vocal_gender: parsedInfo.vocal_gender || '',
+        negative_tags: parsedInfo.negative_tags || '',
+        weirdness: parsedInfo.weirdness !== null ? parsedInfo.weirdness : 50,
+        style_weight: parsedInfo.style_weight !== null ? parsedInfo.style_weight : 50,
+        audio_weight: parsedInfo.audio_weight !== null ? parsedInfo.audio_weight : 25,
+      };
+      renderStyleCards();
+      showToast('已自动填入歌词和风格参数');
+    } else if (parsedInfo.lyrics) {
+      showToast('歌词已自动填入');
+    }
+    return;
+  }
+
+  // 否则，尝试从 API 获取（兼容旧逻辑）
   try {
     const info = await api('GET', `/api/clip?id=${clipId}`);
     const lyrics = info.metadata?.prompt || info.lyrics || info.lyric || '';
