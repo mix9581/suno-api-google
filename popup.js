@@ -86,17 +86,25 @@ function forceCoverSceneVisible() {
   setImportant(document.body, 'background', '#0d0d0d');
   setImportant(document.body, 'color', '#e8e8e8');
   setImportant(document.body, 'overflow-y', 'auto');
+  setImportant(document.documentElement, 'background', '#0d0d0d');
+  setImportant(document.documentElement, 'overflow', 'hidden');
   setImportant(scene, 'display', 'block');
   setImportant(scene, 'visibility', 'visible');
   setImportant(scene, 'opacity', '1');
-  setImportant(scene, 'position', 'relative');
-  setImportant(scene, 'z-index', '1');
+  setImportant(scene, 'position', 'fixed');
+  setImportant(scene, 'inset', '0');
+  setImportant(scene, 'z-index', '2147483647');
+  setImportant(scene, 'width', '100vw');
+  setImportant(scene, 'height', '100vh');
   setImportant(scene, 'min-height', '100vh');
+  setImportant(scene, 'overflow-y', 'auto');
+  setImportant(scene, 'padding-bottom', '24px');
   setImportant(scene, 'background', '#0d0d0d');
   setImportant(scene, 'color', '#e8e8e8');
 
-  ['audioInfo', 'lyricsInput', 'styleCards', 'submitCoverBtn'].forEach((id) => {
+  ['audioInfo', 'lyricsInput', 'styleCards', 'submitCoverBtn', 'backToScene2'].forEach((id) => {
     const el = $(id);
+    if (id === 'styleCards') setImportant(el, 'display', 'block');
     setImportant(el, 'visibility', 'visible');
     setImportant(el, 'opacity', '1');
   });
@@ -1239,6 +1247,7 @@ async function enterScene3(clipId, fileName, parsedInfo = null) {
 }
 
 $('backToScene2').addEventListener('click', () => {
+  document.documentElement.style.removeProperty('overflow');
   showScene('scene2');
 });
 
