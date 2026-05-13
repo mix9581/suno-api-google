@@ -63,6 +63,7 @@ function showScene(sceneId) {
   }
   scene.classList.add('active');
   scene.style.display = 'block';
+  if (sceneId === 'scene3') forceCoverSceneVisible();
   state.scene = sceneId;
   document.documentElement.scrollTop = 0;
   document.body.scrollTop = 0;
@@ -70,7 +71,34 @@ function showScene(sceneId) {
   requestAnimationFrame(() => {
     document.documentElement.scrollTop = 0;
     document.body.scrollTop = 0;
+    if (sceneId === 'scene3') forceCoverSceneVisible();
     scene.scrollIntoView({ block: 'start' });
+  });
+}
+
+function setImportant(el, prop, value) {
+  if (!el) return;
+  el.style.setProperty(prop, value, 'important');
+}
+
+function forceCoverSceneVisible() {
+  const scene = $('scene3');
+  setImportant(document.body, 'background', '#0d0d0d');
+  setImportant(document.body, 'color', '#e8e8e8');
+  setImportant(document.body, 'overflow-y', 'auto');
+  setImportant(scene, 'display', 'block');
+  setImportant(scene, 'visibility', 'visible');
+  setImportant(scene, 'opacity', '1');
+  setImportant(scene, 'position', 'relative');
+  setImportant(scene, 'z-index', '1');
+  setImportant(scene, 'min-height', '100vh');
+  setImportant(scene, 'background', '#0d0d0d');
+  setImportant(scene, 'color', '#e8e8e8');
+
+  ['audioInfo', 'lyricsInput', 'styleCards', 'submitCoverBtn'].forEach((id) => {
+    const el = $(id);
+    setImportant(el, 'visibility', 'visible');
+    setImportant(el, 'opacity', '1');
   });
 }
 
@@ -675,12 +703,23 @@ $('captureCookieBtn').addEventListener('click', async () => {
         showToast('Cookie 绑定成功，Suno 账号已就绪');
       } else {
         // Cookie saved to DB but server couldn't verify with Suno
-        state.cookieValid = false;
-        state.sunoCredits = null;
-        renderDashboard();
         const errMsg = result.cookie_error || '服务器无法验证 Suno 账号';
-        showToast('⚠️ ' + errMsg, 'err');
         console.error('Cookie 验证失败详情:', result);
+        await new Promise((r) => setTimeout(r, 1500));
+        const status = await api('GET', '/api/auth/status').catch(() => null);
+        if (status?.cookie_valid) {
+          state.cookieValid = true;
+          state.sunoCredits = status.suno_credits;
+          state.quota = status.quota;
+          state.used = status.used;
+          renderDashboard();
+          showToast('Cookie 绑定成功，Suno 账号已就绪');
+        } else {
+          state.cookieValid = false;
+          state.sunoCredits = null;
+          renderDashboard();
+          showToast('⚠️ ' + errMsg, 'err');
+        }
       }
     } else {
       showToast('Cookie 绑定失败: ' + (result.error || '未知错误'), 'err');
@@ -1176,8 +1215,10 @@ async function enterScene3(clipId, fileName, parsedInfo = null) {
         audio_weight: pct(parsedInfo.audio_weight, 25),
       };
       renderStyleCards();
+      forceCoverSceneVisible();
       showToast('已自动填入歌词和风格参数');
     } else if (parsedInfo.lyrics) {
+      forceCoverSceneVisible();
       showToast('歌词已自动填入');
     }
     return;
@@ -1189,6 +1230,7 @@ async function enterScene3(clipId, fileName, parsedInfo = null) {
     const lyrics = info.metadata?.prompt || info.lyrics || info.lyric || '';
     if (lyrics) {
       $('lyricsInput').value = lyrics;
+      forceCoverSceneVisible();
       showToast('歌词已自动填入');
     }
   } catch {
