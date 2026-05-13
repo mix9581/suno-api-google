@@ -51,13 +51,18 @@ function withConfirm(btn, originalLabel, action) {
 
 // ======== Scene Navigation ========
 function showScene(sceneId) {
-  document.querySelectorAll('.scene').forEach((el) => el.classList.remove('active'));
+  ensureCoverScene();
+  document.querySelectorAll('.scene').forEach((el) => {
+    el.classList.remove('active');
+    el.style.display = 'none';
+  });
   const scene = $(sceneId);
   if (!scene) {
     showToast(`页面缺少 ${sceneId}`, 'err');
     return;
   }
   scene.classList.add('active');
+  scene.style.display = 'block';
   state.scene = sceneId;
   document.documentElement.scrollTop = 0;
   document.body.scrollTop = 0;
@@ -68,6 +73,54 @@ function showScene(sceneId) {
     scene.scrollIntoView({ block: 'start' });
   });
 }
+
+function ensureCoverScene() {
+  if ($('scene3') && $('lyricsInput') && $('styleCards') && $('submitCoverBtn')) return;
+
+  const scene = document.createElement('div');
+  scene.id = 'scene3';
+  scene.className = 'scene';
+  scene.innerHTML = `
+    <div class="header">
+      <div class="header-left">
+        <button class="back-btn" id="backToScene2" type="button">&larr;</button>
+        <h1>配置翻唱</h1>
+      </div>
+    </div>
+    <div style="padding:16px;">
+      <div class="status-card ok mb-8">
+        <span class="status-dot"></span>
+        <span id="audioInfo">audio.mp3 | clip_id: ---</span>
+      </div>
+      <div id="songInfoSection" style="display:none; margin-bottom:16px;">
+        <button id="toggleSongInfo" class="collapsible-toggle" type="button" style="width:100%; text-align:left; margin-bottom:8px;">
+          <span class="arrow">&#x25B6;</span> 歌曲详细信息
+        </button>
+        <div id="songInfoBody" class="collapsible-body" style="display:none; background:#1a1a1a; padding:12px; border-radius:6px; font-size:12px; line-height:1.6;">
+          <div id="songInfoContent"></div>
+        </div>
+      </div>
+      <div class="form-group">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <label class="form-label" style="margin-bottom:0;">歌词</label>
+          <button type="button" id="clearLyricsBtn" style="background:none;border:none;color:#555;font-size:10px;cursor:pointer;padding:0 2px;">清空</button>
+        </div>
+        <textarea id="lyricsInput" class="form-input" rows="4" placeholder="(Verse 1)&#10;歌词内容..."></textarea>
+      </div>
+      <div class="section">
+        <div class="section-title">
+          <span style="color:#ff7a00;">风格 (<span id="styleCount">1</span>/5)</span>
+          <button class="btn btn-primary btn-sm" id="addStyleBtn" type="button">+ 添加风格</button>
+        </div>
+        <div id="styleCards"></div>
+      </div>
+      <button id="submitCoverBtn" class="btn btn-success btn-block mt-8" type="button">提交翻唱任务</button>
+    </div>
+  `;
+  document.body.appendChild(scene);
+}
+
+ensureCoverScene();
 
 // ======== Toast ========
 function showToast(msg, type = 'ok') {
