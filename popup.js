@@ -1967,21 +1967,7 @@ async function init() {
   }
 }
 
-// Listen for cookie changes from background.js
-// Cookie 变化监听 — 只在指纹变化时响应，防止风暴
-let lastHandledFingerprint = '';
-chrome.storage.onChanged.addListener((changes) => {
-  if (changes.lastCookieFingerprint && state.apiKey) {
-    const newFp = changes.lastCookieFingerprint.newValue;
-    if (newFp && newFp !== lastHandledFingerprint) {
-      lastHandledFingerprint = newFp;
-      showToast('Cookie 已更新');
-      // background.js 已经推送了，只需刷新状态
-      if (state.scene === 'scene2') {
-        setTimeout(() => refreshStatus(), 2000);
-      }
-    }
-  }
-});
+// Background cookie capture is intentionally silent. Manual "刷新 Cookie" owns
+// user-visible success/failure feedback so page loads do not spam transient states.
 
 init();

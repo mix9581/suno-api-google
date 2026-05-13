@@ -2,6 +2,8 @@
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 
 let lastPushedCookieHash = '';
+let pendingCookiePush = null;
+let cookiePushTimer = null;
 
 function parseCookieString(cookieValue) {
   const parsed = new Map();
@@ -67,6 +69,19 @@ async function pushCookieIfLoggedIn(cookieValue, fingerprint) {
   }
 }
 
+function scheduleCookiePush(cookieValue, fingerprint) {
+  pendingCookiePush = { cookieValue, fingerprint };
+  if (cookiePushTimer) clearTimeout(cookiePushTimer);
+
+  cookiePushTimer = setTimeout(() => {
+    const pending = pendingCookiePush;
+    pendingCookiePush = null;
+    cookiePushTimer = null;
+    if (!pending) return;
+    pushCookieIfLoggedIn(pending.cookieValue, pending.fingerprint);
+  }, 1500);
+}
+
 // 监听 Suno/Clerk 请求。优先保存浏览器实际发给 Suno 的 Cookie header，
 // 这比从 cookie store 合并更能代表当前浏览器正在登录的 Suno 账号。
 chrome.webRequest.onSendHeaders.addListener(
@@ -95,7 +110,7 @@ chrome.webRequest.onSendHeaders.addListener(
       capturedAt: new Date().toISOString(),
     });
 
-    await pushCookieIfLoggedIn(requestCookie, fingerprint);
+    scheduleCookiePush(requestCookie, fingerprint);
   },
   {
     urls: [
