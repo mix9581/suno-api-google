@@ -569,19 +569,16 @@ $('captureCookieBtn').addEventListener('click', async () => {
   await new Promise((r) => setTimeout(r, 4000));
 
   // 主动触发一次 Suno API 请求，让 background.js 捕获当前浏览器实际发出的 Cookie header。
-  let billingResp = null;
+  // 这个请求从 chrome-extension:// 发起，401/403 不等价于 suno.com 页面登录失效。
   try {
-    billingResp = await fetch('https://studio-api.prod.suno.com/api/billing/info/', { credentials: 'include' });
+    const billingResp = await fetch('https://studio-api.prod.suno.com/api/billing/info/', { credentials: 'include' });
+    if (billingResp.status === 401 || billingResp.status === 403) {
+      console.warn('扩展页触发 Suno billing 请求未授权，继续使用页面请求捕获和 cookie store 回退');
+    }
   } catch (refreshErr) {
     console.warn('触发 Suno 请求失败，继续使用 cookie store 回退:', refreshErr);
   }
   const freshRequestCookie = await waitForFreshSunoRequestCookie(captureStartedAt);
-  if (billingResp && (billingResp.status === 401 || billingResp.status === 403)) {
-    showToast('⚠️ Suno 登录态已失效，请在 suno.com 刷新并确认已登录', 'err');
-    btn.textContent = state.cookieValid ? '刷新 Cookie' : '获取 Cookie';
-    btn.disabled = false;
-    return;
-  }
 
   // 从浏览器 cookie 存储直接读取，避免多 tab 被动抓取的干扰
   const cookies = await chrome.cookies.getAll({ domain: '.suno.com' });
@@ -680,11 +677,8 @@ $('captureCookieBtn').addEventListener('click', async () => {
             ? refreshedStoredCookie
             : validNewCookies.map((c) => `${c.name}=${c.value}`).join('; ');
           showToast('✓ Session 已自动刷新', 'ok');
-        } else if (resp.status === 401) {
-          showToast('⚠️ Session 已过期，请在 suno.com 点击任意功能后重试', 'err');
-          btn.textContent = '刷新 Cookie';
-          btn.disabled = false;
-          return;
+        } else if (resp.status === 401 || resp.status === 403) {
+          console.warn('扩展页刷新 Suno session 请求未授权，继续提交当前 Cookie 给后端校验');
         }
       } catch (refreshErr) {
         console.warn('自动刷新失败:', refreshErr);
