@@ -8,13 +8,19 @@
 
 ## 后端接口
 
-请求：
+请求。
+
+这个功能不需要 Suno Cookie。后端通过 Suno 公开 clip 接口读取歌曲信息。
+
+如果部署方配置了 `SUNO_LINK_RESOLVE_KEY`，请求需要带任意一种验证方式：
+
+- Header：`X-Resolve-Key: <key>`
+- Header：`X-API-Key: <key>`
+- Query：`?key=<key>`
 
 ```http
 GET /api/resolve_link?url=https%3A%2F%2Fsuno.com%2Fsong%2F...
-X-API-Key: sk-...
-X-Cookie-Scope: browser
-X-Suno-Cookie: ...
+X-Resolve-Key: optional-resolve-key
 ```
 
 返回字段以现有后端为准，主要使用：
@@ -168,7 +174,7 @@ function splitStyleTags(input: { tags?: string | null; negative_tags?: string | 
 
 - 链接不是 Suno 链接：前端直接提示。
 - `clip_id` 不存在：提示“未识别到歌曲 ID”。
-- Cookie 失效：提示重新绑定 Suno Cookie。
+- 解析 Key 错误：提示“解析 Key 无效”。
 - Suno 接口返回 404/403：提示链接不可访问或账号无权限。
 - 网络超时：允许重试。
 
@@ -185,9 +191,9 @@ function splitStyleTags(input: { tags?: string | null; negative_tags?: string | 
 ## 安全注意
 
 - 不要在前端持久化完整 Suno Cookie。
-- 如果必须从浏览器插件传 Cookie，只通过请求头短暂传给后端。
-- 后端不要在日志中打印完整 Cookie、JWT、音频下载地址中的敏感签名参数。
-- API Key、Cookie、2captcha key 都应从服务端环境变量或受控存储读取。
+- 这个解析功能不需要浏览器插件传 Cookie。
+- 后端不要在日志中打印音频下载地址中的敏感签名参数。
+- 如果需要限制访问，使用独立的 `SUNO_LINK_RESOLVE_KEY`，不要复用用户账号 Cookie。
 
 ## 可复用接口清单
 
