@@ -180,8 +180,7 @@ window.addEventListener('unhandledrejection', (event) => {
 
 // ======== API Helper ========
 function hasSunoAuthCookieValue(cookieValue) {
-  return /(?:^|;\s*)__client(?:_[^=;]+)?=/.test(cookieValue || '') ||
-    /(?:^|;\s*)__session(?:_[^=;]+)?=/.test(cookieValue || '');
+  return /(?:^|;\s*)__session(?:_[^=;]+)?=/.test(cookieValue || '');
 }
 
 function compactSunoCookie(cookieValue) {
@@ -584,8 +583,6 @@ $('captureCookieBtn').addEventListener('click', async () => {
   const cookies = await chrome.cookies.getAll({ domain: '.suno.com' });
 
   const hasAuthCookie = cookies.some((c) =>
-    c.name === '__client' ||
-    c.name.startsWith('__client_') ||
     c.name === '__session' ||
     c.name.startsWith('__session_')
   );
@@ -610,8 +607,6 @@ $('captureCookieBtn').addEventListener('click', async () => {
     : validCookies.map((c) => `${c.name}=${c.value}`).join('; ');
 
   const hasValidAuthCookie = validCookies.some((c) =>
-    c.name === '__client' ||
-    c.name.startsWith('__client_') ||
     c.name === '__session' ||
     c.name.startsWith('__session_')
   );

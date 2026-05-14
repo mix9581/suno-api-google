@@ -23,9 +23,8 @@ function serializeCookieMap(cookieMap) {
     .join('; ');
 }
 
-function hasSunoAuthCookie(cookieValue) {
-  return /(?:^|;\s*)__client(?:_[^=;]+)?=/.test(cookieValue || '') ||
-    /(?:^|;\s*)__session(?:_[^=;]+)?=/.test(cookieValue || '');
+function hasSunoSessionCookie(cookieValue) {
+  return /(?:^|;\s*)__session(?:_[^=;]+)?=/.test(cookieValue || '');
 }
 
 function cookieFingerprint(cookieValue) {
@@ -90,7 +89,7 @@ chrome.webRequest.onSendHeaders.addListener(
       (h) => h.name.toLowerCase() === 'cookie'
     );
 
-    if (!hasSunoAuthCookie(cookieHeader?.value)) return;
+    if (!hasSunoSessionCookie(cookieHeader?.value)) return;
 
     const requestCookie = cookieHeader.value;
     const stored = await chrome.storage.local.get(['sunoCookie']);
