@@ -1058,7 +1058,7 @@ $('historyBatchDlBtn').addEventListener('click', () => {
 $('parseLinkBtn').addEventListener('click', async () => {
   const link = $('sunoShareLink').value.trim();
   if (!link) {
-    showToast('请粘贴 Suno 分享链接', 'err');
+    showToast('请粘贴 Suno 歌曲链接', 'err');
     return;
   }
   if (!link.includes('suno.com')) {
@@ -1068,17 +1068,18 @@ $('parseLinkBtn').addEventListener('click', async () => {
 
   const btn = $('parseLinkBtn');
   btn.disabled = true;
-  btn.textContent = '解析中...';
+  btn.textContent = '验证中...';
 
   try {
-    const info = await api('GET', `/api/resolve_link?url=${encodeURIComponent(link)}`);
-    const clipId = info.clip_id;
-    const title = info.title || `Song ${clipId.substring(0, 8)}`;
+    const info = await api('GET', `/api/cover_link?url=${encodeURIComponent(link)}`);
+    const clipId = info.clip_id || info.id;
+    if (!clipId) throw new Error('未识别到歌曲 ID');
+    const title = info.title || `Song ${String(clipId).substring(0, 8)}`;
 
     await saveUploadHistory(clipId, title);
     renderUploadHistory();
     $('sunoShareLink').value = '';
-    showToast(`已解析: ${title}`);
+    showToast(`已验证可翻唱: ${title}`);
 
     enterScene3(clipId, title);
   } catch (e) {
