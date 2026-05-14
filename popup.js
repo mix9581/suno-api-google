@@ -573,10 +573,10 @@ $('captureCookieBtn').addEventListener('click', async () => {
   try {
     const billingResp = await fetch('https://studio-api.prod.suno.com/api/billing/info/', { credentials: 'include' });
     if (billingResp.status === 401 || billingResp.status === 403) {
-      console.warn('扩展页触发 Suno billing 请求未授权，继续使用页面请求捕获和 cookie store 回退');
+      console.debug('扩展页触发 Suno billing 请求未授权，继续使用页面请求捕获和 cookie store 回退');
     }
   } catch (refreshErr) {
-    console.warn('触发 Suno 请求失败，继续使用 cookie store 回退:', refreshErr);
+    console.debug('触发 Suno 请求失败，继续使用 cookie store 回退:', refreshErr);
   }
   const freshRequestCookie = await waitForFreshSunoRequestCookie(captureStartedAt);
 
@@ -678,10 +678,10 @@ $('captureCookieBtn').addEventListener('click', async () => {
             : validNewCookies.map((c) => `${c.name}=${c.value}`).join('; ');
           showToast('✓ Session 已自动刷新', 'ok');
         } else if (resp.status === 401 || resp.status === 403) {
-          console.warn('扩展页刷新 Suno session 请求未授权，继续提交当前 Cookie 给后端校验');
+          console.debug('扩展页刷新 Suno session 请求未授权，继续提交当前 Cookie 给后端校验');
         }
       } catch (refreshErr) {
-        console.warn('自动刷新失败:', refreshErr);
+        console.debug('自动刷新失败:', refreshErr);
         showToast('⚠️ 自动刷新失败，Cookie 可能已过期', 'warn');
       }
     } else {
@@ -713,7 +713,7 @@ $('captureCookieBtn').addEventListener('click', async () => {
       } else {
         // Cookie saved to DB but server couldn't verify with Suno
         const errMsg = result.cookie_error || '服务器无法验证 Suno 账号';
-        console.error('Cookie 验证失败详情:', result);
+        console.debug('Cookie 验证失败详情:', JSON.stringify(result));
         await new Promise((r) => setTimeout(r, 1500));
         const status = await api('GET', '/api/auth/status').catch(() => null);
         if (status?.cookie_valid) {
