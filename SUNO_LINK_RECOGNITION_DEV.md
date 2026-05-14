@@ -23,6 +23,7 @@ X-Suno-Cookie: ...
 {
   "clip_id": "clip uuid",
   "title": "歌曲名",
+  "link": "https://suno.com/song/clip uuid",
   "lyrics": "歌词",
   "tags": "歌曲音乐风格",
   "negative_tags": "排除音乐风格",
@@ -30,7 +31,33 @@ X-Suno-Cookie: ...
   "duration": 123,
   "status": "complete",
   "audio_url": "https://...",
-  "video_url": "https://..."
+  "video_url": "https://...",
+  "is_cover": true,
+  "cover_clip_id": "原曲 clip uuid",
+  "cover_link": "https://suno.com/song/原曲 clip uuid",
+  "links": {
+    "song": "https://suno.com/song/clip uuid",
+    "original_song": "https://suno.com/song/原曲 clip uuid",
+    "audio": "https://...",
+    "video": "https://..."
+  },
+  "song": {
+    "clip_id": "clip uuid",
+    "title": "歌曲名",
+    "link": "https://suno.com/song/clip uuid",
+    "lyrics": "歌词",
+    "tags": "歌曲音乐风格",
+    "negative_tags": "排除音乐风格"
+  },
+  "original_song": {
+    "clip_id": "原曲 clip uuid",
+    "title": "原曲歌曲名",
+    "link": "https://suno.com/song/原曲 clip uuid",
+    "lyrics": "原曲歌词",
+    "tags": "原曲音乐风格",
+    "negative_tags": "原曲排除音乐风格"
+  },
+  "text": "可直接展示或复制的中文摘要文本"
 }
 ```
 
@@ -42,9 +69,22 @@ X-Suno-Cookie: ...
 type SunoLinkRecognition = {
   clipId: string;
   title: string;
+  link: string;
   lyrics: string;
   styleTags: string;
   negativeTags: string;
+  isCover: boolean;
+  coverClipId?: string | null;
+  coverLink?: string | null;
+  originalSong?: {
+    clipId: string;
+    title: string;
+    link: string;
+    lyrics: string;
+    styleTags: string;
+    negativeTags: string;
+  } | null;
+  text: string;
   modelName?: string;
   durationSeconds?: number;
   status?: string;
@@ -100,8 +140,11 @@ function splitStyleTags(input: { tags?: string | null; negative_tags?: string | 
    - `title = data.title || '未知歌曲'`
    - `lyrics = data.lyrics || data.lyric || data.prompt || ''`
    - `clipId = data.clip_id`
+   - `link = data.link || data.links?.song || https://suno.com/song/${clipId}`
    - `styleTags / negativeTags` 使用上面的拆分规则。
-5. UI 展示识别结果。
+   - 如果 `data.is_cover` 或 `data.cover_clip_id` 存在，读取 `data.original_song`。
+   - `text = data.text` 可直接用于展示或复制。
+5. UI 展示识别结果；如果是 cover，同时展示原曲信息和原曲链接。
 
 ## UI 建议
 
@@ -111,9 +154,12 @@ function splitStyleTags(input: { tags?: string | null; negative_tags?: string | 
 - 加载态：按钮显示“识别中...”，禁用重复点击。
 - 结果区：四个固定字段。
   - 歌曲名
+  - 歌曲链接
   - 歌词
   - 歌曲音乐风格
   - 排除音乐风格
+  - 如果是 cover：原曲歌曲名、原曲链接、原曲歌词、原曲风格
+- 文本区：可直接展示接口返回的 `text`，方便复制到其他工作流。
 - 错误态：显示接口错误，不清空用户输入。
 
 ## 错误处理
