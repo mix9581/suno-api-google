@@ -106,10 +106,10 @@ function resetCoverSceneVisibility() {
 
 function forceCoverSceneVisible() {
   const scene = $('scene3');
-  setImportant(document.body, 'background', '#0d0d0d');
-  setImportant(document.body, 'color', '#e8e8e8');
+  setImportant(document.body, 'background', '#f6efe3');
+  setImportant(document.body, 'color', '#2b2823');
   setImportant(document.body, 'overflow-y', 'auto');
-  setImportant(document.documentElement, 'background', '#0d0d0d');
+  setImportant(document.documentElement, 'background', '#f6efe3');
   setImportant(document.documentElement, 'overflow', 'auto');
   setImportant(scene, 'display', 'block');
   setImportant(scene, 'visibility', 'visible');
@@ -122,8 +122,8 @@ function forceCoverSceneVisible() {
   setImportant(scene, 'min-height', '100vh');
   setImportant(scene, 'overflow-y', 'auto');
   setImportant(scene, 'padding-bottom', '24px');
-  setImportant(scene, 'background', '#0d0d0d');
-  setImportant(scene, 'color', '#e8e8e8');
+  setImportant(scene, 'background', '#f6efe3');
+  setImportant(scene, 'color', '#2b2823');
 
   ['audioInfo', 'lyricsInput', 'styleCards', 'submitCoverBtn', 'backToScene2'].forEach((id) => {
     const el = $(id);
@@ -1086,67 +1086,6 @@ $('parseLinkBtn').addEventListener('click', async () => {
   } finally {
     btn.disabled = false;
     btn.textContent = '解析并翻唱';
-  }
-});
-
-function splitStyleTags(info) {
-  const tags = String(info?.tags || '').trim();
-  const explicitNegative = String(info?.negative_tags || '').trim();
-  const parts = tags
-    .split(/[,，\n]/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  const positive = [];
-  const negative = [];
-
-  parts.forEach((part) => {
-    if (/^[-－]\s*/.test(part)) negative.push(part.replace(/^[-－]\s*/, '').trim());
-    else positive.push(part);
-  });
-
-  return {
-    tags: positive.length ? positive.join(', ') : tags,
-    negative_tags: explicitNegative || negative.join(', '),
-  };
-}
-
-function renderSongLookup(info) {
-  const result = $('songLookupResult');
-  const styles = splitStyleTags(info);
-  const lyrics = info.lyrics || info.lyric || info.prompt || '';
-  result.innerHTML = `
-    <div><strong style="color:#ff7a00;">歌曲名</strong><br>${escapeHtml(info.title || '未知')}</div>
-    <div style="margin-top:8px;"><strong style="color:#ff7a00;">歌词</strong><pre style="white-space:pre-wrap;margin-top:4px;color:#aaa;font-family:inherit;">${escapeHtml(lyrics || '无')}</pre></div>
-    <div style="margin-top:8px;"><strong style="color:#ff7a00;">歌曲音乐风格</strong><br>${escapeHtml(styles.tags || '无')}</div>
-    <div style="margin-top:8px;"><strong style="color:#ff7a00;">排除音乐风格</strong><br>${escapeHtml(styles.negative_tags || '无')}</div>
-  `;
-  result.style.display = 'block';
-}
-
-$('songLookupBtn').addEventListener('click', async () => {
-  const link = $('songLookupLink').value.trim();
-  if (!link) {
-    showToast('请粘贴 Suno 分享链接', 'err');
-    return;
-  }
-  if (!link.includes('suno.com')) {
-    showToast('请输入有效的 suno.com 链接', 'err');
-    return;
-  }
-
-  const btn = $('songLookupBtn');
-  btn.disabled = true;
-  btn.textContent = '识别中...';
-  try {
-    const info = await api('GET', `/api/resolve_link?url=${encodeURIComponent(link)}`);
-    renderSongLookup(info);
-    showToast('已识别歌曲信息');
-  } catch (e) {
-    $('songLookupResult').style.display = 'none';
-    showToast('识别失败: ' + e.message, 'err');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '识别';
   }
 });
 
