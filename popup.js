@@ -223,6 +223,8 @@ async function waitForFreshSunoRequestCookie(sinceMs, timeoutMs = 2500) {
 
 async function api(method, path, body = null) {
   const url = `${state.apiUrl.replace(/\/+$/, '')}${path}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
   const headers = {
     'X-API-Key': state.apiKey,
     'X-Cookie-Scope': 'browser',
@@ -234,7 +236,7 @@ async function api(method, path, body = null) {
     headers['X-Suno-Cookie'] = sunoCookie;
   }
 
-  const opts = { method, headers };
+  const opts = { method, headers, signal: controller.signal };
   if (body) {
     headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
@@ -243,7 +245,12 @@ async function api(method, path, body = null) {
   try {
     resp = await fetch(url, opts);
   } catch (e) {
+    if (e.name === 'AbortError') {
+      throw new Error(`请求超时，请检查服务器连接：${state.apiUrl}`);
+    }
     throw new Error(`无法连接服务器 ${state.apiUrl} — ${e.message}`);
+  } finally {
+    clearTimeout(timeout);
   }
   const text = await resp.text();
   let data;
@@ -2085,6 +2092,7 @@ async function init() {
       startAutoRefresh();
     } catch {
       // Auto-login failed, stay on Scene 1
+      showScene('scene1');
       loginBtn.disabled = false;
       loginBtn.textContent = '登录';
     }
