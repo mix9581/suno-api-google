@@ -12,7 +12,39 @@ const DEFAULT_PRESETS = [
     style_weight: 0.5,
     audio_weight: 0.64,
   },
+  {
+    id: 'preset_dj_melbourne_bounce',
+    name: 'DJ',
+    tags: 'Melbourne Bounce, Vinahouse, Sino-Commercial Dance, High BPM (130-145), Four-on-the-floor bass drum, Off-beat Donk bass, Nightcore vocals, Pitch-shifted female vocals, Heavy Auto-Tune, Washed-out spatial Reverb, Heavy Sidechain Compression (pumping effect), Cheesy Sawtooth Synth Leads, Plastic Synth Brass, Vocal Chops, Over-compression, Brickwall Limiting, Zero dynamic range, Airhorn sound effects, Siren FX, Aggressive snare build-ups, Abrupt drops',
+    negative_tags: '',
+    vocal_gender: '',
+    weirdness: 0.5,
+    style_weight: 0.5,
+    audio_weight: 0.25,
+  },
+  {
+    id: 'preset_reggae_rnb',
+    name: '雷鬼rnb',
+    tags: 'Vintage Funk X Neo-Soul, 105 BPM, Expressive soulful vocals, Seamless Register Flip to falsetto, Portamento vocal slides, Dynamic vocal phrasing, Vocal fry, Melismatic vocal runs, Tight syncopated groove, Deep pocket slap bass, Rhodes electric piano, Clean rhythm guitar, Brass section hits, ‑Overly happy intro',
+    negative_tags: '‑Trap beats, ‑Club EDM, ‑Electronic dance, ‑Screamo, ‑Heavy Metal, ‑Robotic autotune, ‑Hopeless, ‑Monotone, ‑Flat dynamics, ‑Generic commercial Pop, ‑Cheesy synthesizer, ‑Fast pace, ‑R&B, ‑Rap',
+    vocal_gender: '',
+    weirdness: 0.5,
+    style_weight: 0.5,
+    audio_weight: 0.25,
+  },
 ];
+
+function mergeDefaultPresets(presets) {
+  const result = Array.isArray(presets) ? [...presets] : [];
+  let changed = false;
+  for (const preset of DEFAULT_PRESETS) {
+    if (!result.some((item) => item.id === preset.id)) {
+      result.push({ ...preset });
+      changed = true;
+    }
+  }
+  return { presets: result, changed };
+}
 
 const PresetManager = {
   async getAll() {
@@ -22,7 +54,9 @@ const PresetManager = {
       await chrome.storage.local.set({ presets: DEFAULT_PRESETS, presetsInitialized: true });
       return DEFAULT_PRESETS;
     }
-    return data.presets || [];
+    const merged = mergeDefaultPresets(data.presets || []);
+    if (merged.changed) await chrome.storage.local.set({ presets: merged.presets });
+    return merged.presets;
   },
 
   async save(preset) {

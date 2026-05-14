@@ -147,7 +147,7 @@ function ensureCoverScene() {
     <div class="header">
       <div class="header-left">
         <button class="back-btn" id="backToScene2" type="button">&larr;</button>
-        <h1>配置翻唱</h1>
+        <h1><span class="gradient-qh">青幻工具箱</span><span class="brand-author">-作者：爱喽叽歪</span></h1>
       </div>
     </div>
     <div style="padding:16px;">
@@ -1429,9 +1429,9 @@ async function applyPresetToStyle(idx, presetId) {
     tags: preset.tags || '',
     vocal_gender: preset.vocal_gender || '',
     negative_tags: preset.negative_tags || '',
-    weirdness: preset.weirdness ?? 50,
-    style_weight: preset.style_weight ?? 50,
-    audio_weight: preset.audio_weight ?? 25,
+    weirdness: toPercent(preset.weirdness, 50),
+    style_weight: toPercent(preset.style_weight, 50),
+    audio_weight: toPercent(preset.audio_weight, 25),
   };
   renderStyleCards();
   showToast(`已应用预设: ${preset.name}`);

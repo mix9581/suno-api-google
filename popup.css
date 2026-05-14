@@ -432,13 +432,29 @@ textarea.form-input { resize: vertical; min-height: 60px; font-family: inherit; 
 .text-muted { color: #888; }
 
 /* 青幻工具箱 gradient text */
+.brand-link {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
+  white-space: nowrap;
+}
+
 .gradient-qh {
-  background: linear-gradient(135deg, #00d4ff, #00e5aa);
+  background: linear-gradient(135deg, #00c2b8 0%, #11d99a 48%, #68f2c8 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   font-size: 15px;
   letter-spacing: 0.5px;
+  font-weight: 800;
+}
+
+.brand-author {
+  color: #37645d;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0;
 }
 
 /* Changelog */
@@ -511,7 +527,6 @@ html {
 .style-card-num,
 .collapsible-toggle,
 .changelog-ver,
-.gradient-qh,
 .form-label {
   color: var(--orange) !important;
   background: none !important;
