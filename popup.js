@@ -1013,7 +1013,10 @@ async function renderUploadHistory() {
   }
 
   container.querySelectorAll('[data-reuse-clip]').forEach((btn) => {
-    btn.addEventListener('click', () => enterScene3(btn.dataset.reuseClip, btn.dataset.reuseName));
+    btn.addEventListener('click', async () => {
+      const info = await loadCoverSourceInfo(btn.dataset.reuseClip);
+      enterScene3(btn.dataset.reuseClip, btn.dataset.reuseName, { sourceInfo: info });
+    });
   });
   container.querySelectorAll('.open-dl-modal').forEach((btn) => {
     btn.addEventListener('click', () => openDownloadModal(btn.dataset.clipId));
@@ -1081,7 +1084,7 @@ $('parseLinkBtn').addEventListener('click', async () => {
     $('sunoShareLink').value = '';
     showToast(`已验证可翻唱: ${title}`);
 
-    enterScene3(clipId, title);
+    enterScene3(clipId, title, { sourceInfo: info });
   } catch (e) {
     showToast('解析失败: ' + e.message, 'err');
   } finally {
@@ -1217,6 +1220,44 @@ function setCoverSubmitReady(ready) {
   submitBtn.textContent = ready ? '提交翻唱任务' : '等待音频就绪';
 }
 
+function toPercent(value, fallback) {
+  if (value === null || value === undefined || value === '' || Number.isNaN(Number(value))) return fallback;
+  const num = Number(value);
+  return Math.round(num <= 1 ? num * 100 : num);
+}
+
+function buildStyleCardFromInfo(info) {
+  return {
+    tags: info?.tags || '',
+    vocal_gender: info?.vocal_gender || '',
+    negative_tags: info?.negative_tags || '',
+    weirdness: toPercent(info?.weirdness, 50),
+    style_weight: toPercent(info?.style_weight, 50),
+    audio_weight: toPercent(info?.audio_weight, 25),
+  };
+}
+
+function applyCoverSourceInfo(info) {
+  if (!info) return;
+  $('lyricsInput').value = info.lyrics || '';
+  const sourceStyle = buildStyleCardFromInfo(info);
+  if (sourceStyle.tags || sourceStyle.negative_tags || sourceStyle.vocal_gender) {
+    styleCards[0] = sourceStyle;
+    renderStyleCards();
+  }
+  displaySongInfo(info);
+}
+
+async function loadCoverSourceInfo(clipId) {
+  if (!clipId) return null;
+  try {
+    return await api('GET', `/api/clip?id=${encodeURIComponent(clipId)}`);
+  } catch (err) {
+    showToast('读取原曲信息失败: ' + err.message, 'err');
+    return null;
+  }
+}
+
 function enterScene3(clipId, fileName, options = {}) {
   state.uploadedClipId = clipId;
   state.uploadedFileName = fileName;
@@ -1227,6 +1268,7 @@ function enterScene3(clipId, fileName, options = {}) {
   $('lyricsInput').value = '';
   const songInfoSection = $('songInfoSection');
   if (songInfoSection) songInfoSection.style.display = 'none';
+  applyCoverSourceInfo(options.sourceInfo);
   setCoverSubmitReady(Boolean(clipId));
   showScene('scene3');
 }
@@ -1386,6 +1428,10 @@ async function applyPresetToStyle(idx, presetId) {
   styleCards[idx] = {
     tags: preset.tags || '',
     vocal_gender: preset.vocal_gender || '',
+    negative_tags: preset.negative_tags || '',
+    weirdness: preset.weirdness ?? 50,
+    style_weight: preset.style_weight ?? 50,
+    audio_weight: preset.audio_weight ?? 25,
   };
   renderStyleCards();
   showToast(`已应用预设: ${preset.name}`);
@@ -1750,7 +1796,8 @@ async function loadSunoLibrary() {
       btn.addEventListener('click', async () => {
         await saveUploadHistory(btn.dataset.libClip, btn.dataset.libTitle);
         renderUploadHistory();
-        enterScene3(btn.dataset.libClip, btn.dataset.libTitle);
+        const info = await loadCoverSourceInfo(btn.dataset.libClip);
+        enterScene3(btn.dataset.libClip, btn.dataset.libTitle, { sourceInfo: info });
       });
     });
 
