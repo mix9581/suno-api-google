@@ -52,6 +52,7 @@ function withConfirm(btn, originalLabel, action) {
 // ======== Scene Navigation ========
 function showScene(sceneId) {
   ensureCoverScene();
+  if (sceneId !== 'scene3') resetCoverSceneVisibility();
   document.querySelectorAll('.scene').forEach((el) => {
     el.classList.remove('active');
     el.style.display = 'none';
@@ -81,13 +82,35 @@ function setImportant(el, prop, value) {
   el.style.setProperty(prop, value, 'important');
 }
 
+function resetCoverSceneVisibility() {
+  const scene = $('scene3');
+  document.documentElement.style.removeProperty('overflow');
+  document.documentElement.style.removeProperty('background');
+  document.body.style.removeProperty('overflow-y');
+  if (!scene) return;
+  [
+    'visibility',
+    'opacity',
+    'position',
+    'inset',
+    'z-index',
+    'width',
+    'height',
+    'min-height',
+    'overflow-y',
+    'padding-bottom',
+    'background',
+    'color',
+  ].forEach((prop) => scene.style.removeProperty(prop));
+}
+
 function forceCoverSceneVisible() {
   const scene = $('scene3');
   setImportant(document.body, 'background', '#0d0d0d');
   setImportant(document.body, 'color', '#e8e8e8');
   setImportant(document.body, 'overflow-y', 'auto');
   setImportant(document.documentElement, 'background', '#0d0d0d');
-  setImportant(document.documentElement, 'overflow', 'hidden');
+  setImportant(document.documentElement, 'overflow', 'auto');
   setImportant(scene, 'display', 'block');
   setImportant(scene, 'visibility', 'visible');
   setImportant(scene, 'opacity', '1');
@@ -871,6 +894,7 @@ fileInput.addEventListener('change', () => {
 });
 
 async function handleUpload(file) {
+  enterScene3(null, file.name, { pendingText: '正在上传音频，上传成功后可提交翻唱任务' });
   uploadProgress.style.display = 'flex';
   uploadProgressText.textContent = `正在上传「${file.name}」，请耐心等待...`;
   uploadArea.style.pointerEvents = 'none';
@@ -898,6 +922,8 @@ async function handleUpload(file) {
 
     state.uploadedClipId = data.clip_id;
     state.uploadedFileName = file.name;
+    $('audioInfo').textContent = `${file.name} | clip_id: ${data.clip_id}`;
+    setCoverSubmitReady(true);
 
     // Save to upload history
     await saveUploadHistory(data.clip_id, file.name);
@@ -908,11 +934,9 @@ async function handleUpload(file) {
 
     uploadProgress.style.display = 'none';
     showToast('上传成功');
-
-    // Go to Scene 3
-    enterScene3(data.clip_id, file.name);
   } catch (err) {
     uploadProgress.style.display = 'none';
+    showScene('scene2');
     showToast(err.message, 'err');
   }
   uploadArea.style.pointerEvents = '';
@@ -1030,7 +1054,7 @@ $('historyBatchDlBtn').addEventListener('click', () => {
   $('batchDlModal').style.display = 'block';
 });
 
-// ======== Suno Share Link Parser ========
+// ======== Suno Share Link Cover Parser ========
 $('parseLinkBtn').addEventListener('click', async () => {
   const link = $('sunoShareLink').value.trim();
   if (!link) {
@@ -1056,14 +1080,73 @@ $('parseLinkBtn').addEventListener('click', async () => {
     $('sunoShareLink').value = '';
     showToast(`已解析: ${title}`);
 
-    // 先进入 Scene3，再渲染歌曲信息，避免隐藏场景里的节点状态影响后续按钮显示。
-    await enterScene3(clipId, title, info);
-    displaySongInfo(info);
+    enterScene3(clipId, title);
   } catch (e) {
     showToast('解析失败: ' + e.message, 'err');
   } finally {
     btn.disabled = false;
-    btn.textContent = '解析';
+    btn.textContent = '解析并翻唱';
+  }
+});
+
+function splitStyleTags(info) {
+  const tags = String(info?.tags || '').trim();
+  const explicitNegative = String(info?.negative_tags || '').trim();
+  const parts = tags
+    .split(/[,，\n]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const positive = [];
+  const negative = [];
+
+  parts.forEach((part) => {
+    if (/^[-－]\s*/.test(part)) negative.push(part.replace(/^[-－]\s*/, '').trim());
+    else positive.push(part);
+  });
+
+  return {
+    tags: positive.length ? positive.join(', ') : tags,
+    negative_tags: explicitNegative || negative.join(', '),
+  };
+}
+
+function renderSongLookup(info) {
+  const result = $('songLookupResult');
+  const styles = splitStyleTags(info);
+  const lyrics = info.lyrics || info.lyric || info.prompt || '';
+  result.innerHTML = `
+    <div><strong style="color:#ff7a00;">歌曲名</strong><br>${escapeHtml(info.title || '未知')}</div>
+    <div style="margin-top:8px;"><strong style="color:#ff7a00;">歌词</strong><pre style="white-space:pre-wrap;margin-top:4px;color:#aaa;font-family:inherit;">${escapeHtml(lyrics || '无')}</pre></div>
+    <div style="margin-top:8px;"><strong style="color:#ff7a00;">歌曲音乐风格</strong><br>${escapeHtml(styles.tags || '无')}</div>
+    <div style="margin-top:8px;"><strong style="color:#ff7a00;">排除音乐风格</strong><br>${escapeHtml(styles.negative_tags || '无')}</div>
+  `;
+  result.style.display = 'block';
+}
+
+$('songLookupBtn').addEventListener('click', async () => {
+  const link = $('songLookupLink').value.trim();
+  if (!link) {
+    showToast('请粘贴 Suno 分享链接', 'err');
+    return;
+  }
+  if (!link.includes('suno.com')) {
+    showToast('请输入有效的 suno.com 链接', 'err');
+    return;
+  }
+
+  const btn = $('songLookupBtn');
+  btn.disabled = true;
+  btn.textContent = '识别中...';
+  try {
+    const info = await api('GET', `/api/resolve_link?url=${encodeURIComponent(link)}`);
+    renderSongLookup(info);
+    showToast('已识别歌曲信息');
+  } catch (e) {
+    $('songLookupResult').style.display = 'none';
+    showToast('识别失败: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '识别';
   }
 });
 
@@ -1188,66 +1271,27 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ======== Scene 3: Cover Config (scaffold) ========
-async function enterScene3(clipId, fileName, parsedInfo = null) {
+function setCoverSubmitReady(ready) {
+  const submitBtn = $('submitCoverBtn');
+  submitBtn.disabled = !ready;
+  submitBtn.textContent = ready ? '提交翻唱任务' : '等待音频就绪';
+}
+
+function enterScene3(clipId, fileName, options = {}) {
   state.uploadedClipId = clipId;
   state.uploadedFileName = fileName;
-  $('audioInfo').textContent = `${fileName} | clip_id: ${clipId}`;
+  $('audioInfo').textContent = clipId
+    ? `${fileName} | clip_id: ${clipId}`
+    : `${fileName} | ${options.pendingText || '等待音频就绪'}`;
   resetStyleCards();
   $('lyricsInput').value = '';
+  const songInfoSection = $('songInfoSection');
+  if (songInfoSection) songInfoSection.style.display = 'none';
+  setCoverSubmitReady(Boolean(clipId));
   showScene('scene3');
-
-  // 如果有解析信息，直接使用
-  if (parsedInfo) {
-    // 填充歌词
-    if (parsedInfo.lyrics) {
-      $('lyricsInput').value = parsedInfo.lyrics;
-    }
-
-    // 填充风格参数
-    const pct = (value, fallback) => {
-      if (value === null || value === undefined || value === '') return fallback;
-      const num = Number(value);
-      if (!Number.isFinite(num)) return fallback;
-      return num <= 1 ? Math.round(num * 100) : Math.round(num);
-    };
-
-    if (parsedInfo.tags || parsedInfo.vocal_gender || parsedInfo.negative_tags ||
-        parsedInfo.weirdness != null || parsedInfo.style_weight != null || parsedInfo.audio_weight != null) {
-
-      styleCards[0] = {
-        tags: parsedInfo.tags || '',
-        vocal_gender: parsedInfo.vocal_gender || '',
-        negative_tags: parsedInfo.negative_tags || '',
-        weirdness: pct(parsedInfo.weirdness, 50),
-        style_weight: pct(parsedInfo.style_weight, 50),
-        audio_weight: pct(parsedInfo.audio_weight, 25),
-      };
-      renderStyleCards();
-      forceCoverSceneVisible();
-      showToast('已自动填入歌词和风格参数');
-    } else if (parsedInfo.lyrics) {
-      forceCoverSceneVisible();
-      showToast('歌词已自动填入');
-    }
-    return;
-  }
-
-  // 否则，尝试从 API 获取（兼容旧逻辑）
-  try {
-    const info = await api('GET', `/api/clip?id=${clipId}`);
-    const lyrics = info.metadata?.prompt || info.lyrics || info.lyric || '';
-    if (lyrics) {
-      $('lyricsInput').value = lyrics;
-      forceCoverSceneVisible();
-      showToast('歌词已自动填入');
-    }
-  } catch {
-    // 歌词获取失败不影响使用
-  }
 }
 
 $('backToScene2').addEventListener('click', () => {
-  document.documentElement.style.removeProperty('overflow');
   showScene('scene2');
 });
 
