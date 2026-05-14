@@ -111,6 +111,10 @@ function forceCoverSceneVisible() {
 }
 
 function ensureCoverScene() {
+  const existingScene = $('scene3');
+  if (existingScene && existingScene.parentElement !== document.body) {
+    document.body.appendChild(existingScene);
+  }
   if ($('scene3') && $('lyricsInput') && $('styleCards') && $('submitCoverBtn')) return;
 
   const scene = document.createElement('div');
